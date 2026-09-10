@@ -11,6 +11,47 @@
 | Analyses longues | Un contrat de tâches (`src/jobs/types.ts`) : lancement non bloquant, avancement, arrêt, résultat partiel. Un seul exécuteur aujourd'hui, local. |
 | Code sous git | Dépôt privé, épreuves automatiques, déploiement continu depuis la branche principale. |
 
+## Décision : 100 % dans le navigateur, et ce qui ferait changer d'avis
+
+Le choix est assumé, pas subi : **tant que le navigateur suffit, il n'y a pas
+de serveur**. Un serveur, c'est une machine à faire valider, à tenir à jour, à
+surveiller, et un endroit de plus où des séquences peuvent traîner. Le jour où
+il faudra le faire, on le fera — le contrat de tâches est là pour que ce jour-là
+ne soit pas une réécriture.
+
+Ce que le navigateur avale vraiment, mesuré sur le balayage exhaustif d'amorces
+(machine de développement, un seul fil, amplicon 150–800 nt) :
+
+| Séquence | Durée | Couples examinés |
+|---|---|---|
+| 1 kb | 2,5 s | 778 000 |
+| 5 kb | 25 s | 8,2 millions |
+| 20 kb | 1 min 41 | 33 millions |
+| 50 kb | 4 min 08 | 81 millions |
+
+Une lecture Sanger fait 500 à 1 000 bases, un plasmide 3 à 10 kb : on est très
+loin du plafond, et la tâche est interruptible avec résultat partiel. Le coût
+tient au calcul de dimères, pas à la taille : un moteur compilé (primer3 en
+WebAssembly) ferait mieux et plus juste, dans le même onglet.
+
+Les trois signaux qui justifieraient un niveau 2 — aucun n'est atteint :
+
+1. **Un calcul impossible dans un onglet.** BLAST contre une base publique
+   entière, alignement de centaines de lectures : ce n'est pas une question de
+   patience, les données de référence ne tiennent pas sur le poste.
+2. **Un besoin de réseau.** Le pipeline de spécificité de PrimeSpecPCR interroge
+   le NCBI. C'est incompatible avec « rien ne sort du poste » pour des séquences
+   d'échantillons ; ça ne l'est pas pour des séquences publiques — mais c'est
+   alors une décision explicite, prise par l'entreprise, pas un effet de bord.
+3. **Un calcul qui dépasse la patience de l'opérateur** malgré l'optimisation et
+   les travailleurs multiples (le balayage se découpe par tranches de séquence :
+   quatre fils, quatre fois moins d'attente, si le besoin s'en fait sentir).
+
+Avant d'ouvrir un serveur, on épuise donc trois cartouches : mieux compiler
+(WebAssembly), paralléliser (plusieurs travailleurs), et réduire le problème
+(pré-filtrer les candidats). Elles sont moins coûteuses que la première réunion
+avec l'informatique.
+
 ## Deux niveaux, un seul contrat
 
 ```
@@ -26,9 +67,10 @@
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-Le **niveau 1** est ce qui existe : tout dans le navigateur. Un balayage
-exhaustif d'amorces sur quelques kilobases y tient largement ; c'est le cas
-d'usage « tester tous les couples possibles et garder les meilleurs ».
+Le **niveau 1** est ce qui existe, et c'est le seul qui tourne : tout dans le
+navigateur. Un balayage exhaustif d'amorces sur quelques kilobases y tient
+largement (voir les mesures ci-dessus) ; c'est le cas d'usage « tester tous les
+couples possibles et garder les meilleurs ».
 
 Le **niveau 2** est prévu, pas installé (`src/jobs/executeur-distant.ts` fixe le
 protocole). Il ne servira qu'aux calculs qu'un onglet ne peut pas faire : BLAST

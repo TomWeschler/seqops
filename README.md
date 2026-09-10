@@ -52,6 +52,13 @@ Cloudflare Pages, gratuit, dépôt privé accepté — voir `docs/exploitation.m
 GitHub Pages n'est pas utilisable ici : sur un dépôt privé, il exige un compte
 payant.
 
+## Ce projet doit sortir du dépôt où il est né
+
+Il vit provisoirement dans `seqops/` du dépôt `kanban`. La marche à suivre pour
+lui donner son propre dépôt privé, historique compris, est dans
+[`docs/nouveau-depot.md`](docs/nouveau-depot.md) — c'est la prochaine chose à
+faire.
+
 ## Licence
 
 MIT. Les moteurs tiers envisagés ont leurs propres licences, examinées dans

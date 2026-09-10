@@ -1,0 +1,36 @@
+name: épreuves
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  epreuves:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Types
+        run: npm run verif
+      - name: Épreuves unitaires
+        run: npm run test
+      - name: Construction
+        run: npm run build
+      # Le navigateur est téléchargé ici, faute d'en avoir un dans l'image ;
+      # sur un poste, PW_CHROME suffit.
+      - name: Navigateur
+        run: npx playwright install --with-deps chromium
+      - name: Parcours de bout en bout
+        run: npx playwright test
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-playwright
+          path: playwright-report/
+          retention-days: 7
