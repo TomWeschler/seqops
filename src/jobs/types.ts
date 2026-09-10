@@ -39,6 +39,9 @@ export interface Executeur {
    *  bloque pas celui qui la lance. */
   lancer<R>(calcul: string, params: unknown, options?: OptionsLancement<R>): string;
   annuler(id: string): void;
+  /** Retire une tâche finie de la liste. Une tâche en cours n'est pas oubliée
+   *  sans être arrêtée : on ne perd pas la trace d'un calcul qui tourne. */
+  oublier(id: string): void;
   taches(): readonly Tache[];
   /** Appelé à chaque changement d'état d'une tâche. */
   surChangement(ecoute: (taches: readonly Tache[]) => void): () => void;

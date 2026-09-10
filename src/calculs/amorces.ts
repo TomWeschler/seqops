@@ -30,6 +30,14 @@ export interface ParamsAmorces {
   readonly oligoNM?: number;
   readonly selMM?: number;
   readonly maxPaires?: number;
+  /** Chercher une sonde d'hydrolyse entre les deux amorces. Une paire sans
+   *  sonde exploitable est alors écartée : en qPCR, elle ne sert à rien. */
+  readonly sonde?: boolean;
+  readonly sondeTmMin?: number;
+  readonly sondeTmMax?: number;
+  readonly sondeTmOptimale?: number;
+  readonly sondeLongMin?: number;
+  readonly sondeLongMax?: number;
 }
 
 export interface Amorce {
@@ -44,6 +52,20 @@ export interface Amorce {
   readonly pince: number;
 }
 
+export interface Sonde {
+  /** Le brin sur lequel la sonde s'hybride ; la séquence donnée est celle à
+   *  commander, lue 5' → 3' sur ce brin. */
+  readonly brin: '+' | '−';
+  /** Coordonnées sur le brin direct, à partir de 1, bornes comprises. */
+  readonly debut: number;
+  readonly fin: number;
+  readonly seq: string;
+  readonly tm: number;
+  readonly gc: number;
+  /** Bases entre la fin de l'amorce avant et le début de la sonde. */
+  readonly distanceAvant: number;
+}
+
 export interface PaireAmorces {
   readonly avant: Amorce;
   readonly arriere: Amorce;
@@ -51,12 +73,16 @@ export interface PaireAmorces {
   readonly deltaTm: number;
   readonly score: number;
   readonly dimere: number;
+  readonly sonde?: Sonde;
 }
 
 export interface ResultatAmorces {
   readonly paires: readonly PaireAmorces[];
   readonly candidatsAvant: number;
   readonly candidatsArriere: number;
+  readonly candidatsSonde: number;
+  /** Paires écartées faute de sonde exploitable entre les deux amorces. */
+  readonly sansSonde: number;
   readonly pairesExaminees: number;
   readonly interrompu: boolean;
 }
@@ -76,6 +102,41 @@ function complementariteTerminale(a: string, b: string, fenetre = 6): number {
     }
   }
   return pire;
+}
+
+/** Une sonde d'hydrolyse obéit à d'autres règles qu'une amorce :
+ *  — elle fond 8 à 10 °C plus haut, pour être déjà hybridée quand les amorces
+ *    s'allongent ;
+ *  — elle ne commence jamais par un G : un G en 5' éteint le fluorophore qu'on
+ *    y accroche, et la sonde ne rapporte plus rien ;
+ *  — on choisit le brin qui porte le plus de C, pour la même raison ;
+ *  — pas de GGGG, qui replie l'oligonucléotide sur lui-même.
+ *  C'est pourquoi elle a sa propre fonction, et non des bornes différentes
+ *  passées à celle des amorces. */
+function evaluerSonde(
+  seq: string, debut: number, longueur: number, p: Required<ParamsAmorces>
+): Sonde | null {
+  const brut = seq.substr(debut, longueur);
+  if (brut.length !== longueur || !/^[ACGT]+$/.test(brut)) return null;
+  if (REPETITION.test(brut) || /G{4,}/.test(brut)) return null;
+
+  // Le brin qui porte le plus de C ; à égalité, le brin direct.
+  const inverse = complementInverse(brut);
+  const compte = (o: string, b: string) => (o.match(new RegExp(b, 'g')) ?? []).length;
+  const candidats: {brin: '+' | '−'; oligo: string}[] =
+    compte(brut, 'C') >= compte(brut, 'G')
+      ? [{brin: '+', oligo: brut}, {brin: '−', oligo: inverse}]
+      : [{brin: '−', oligo: inverse}, {brin: '+', oligo: brut}];
+
+  for (const {brin, oligo} of candidats) {
+    if (oligo.startsWith('G')) continue;              // fluorophore éteint
+    const c = composition(oligo);
+    if (c.gc < 30 || c.gc > 80) continue;
+    const tm = tmPlusProcheVoisin(oligo, p.oligoNM, p.selMM);
+    if (tm === null || tm < p.sondeTmMin || tm > p.sondeTmMax) continue;
+    return {brin, debut: debut + 1, fin: debut + longueur, seq: oligo, tm, gc: c.gc, distanceAvant: 0};
+  }
+  return null;
 }
 
 function evaluer(
@@ -111,22 +172,31 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
       ampliconMin: params.ampliconMin ?? 100, ampliconMax: params.ampliconMax ?? 1000,
       deltaTmMax: params.deltaTmMax ?? 2,
       oligoNM: params.oligoNM ?? 500, selMM: params.selMM ?? 50,
-      maxPaires: params.maxPaires ?? 50
+      maxPaires: params.maxPaires ?? 50,
+      sonde: params.sonde ?? false,
+      // Huit à dix degrés au-dessus des amorces : la règle de la qPCR.
+      sondeTmMin: params.sondeTmMin ?? 67, sondeTmMax: params.sondeTmMax ?? 73,
+      sondeTmOptimale: params.sondeTmOptimale ?? 70,
+      sondeLongMin: params.sondeLongMin ?? 20, sondeLongMax: params.sondeLongMax ?? 30
     };
     const seq = p.seq;
     const L = seq.length;
     if (L < p.ampliconMin) {
-      return {paires: [], candidatsAvant: 0, candidatsArriere: 0, pairesExaminees: 0, interrompu: false};
+      return {paires: [], candidatsAvant: 0, candidatsArriere: 0, candidatsSonde: 0,
+              sansSonde: 0, pairesExaminees: 0, interrompu: false};
     }
 
     // 1. Les candidats, position par position et longueur par longueur.
     const avant: Amorce[] = [];
     const arriere: Amorce[] = [];
+    // Recensées dans la même passe que les amorces, donc dans l'ordre des
+    // positions : la recherche par intervalle plus bas s'en sert.
+    const sondes: Sonde[] = [];
     for (let i = 0; i < L; i++) {
       if ((i & 255) === 0) {
         if (ctx.annule()) {
           return {paires: [], candidatsAvant: avant.length, candidatsArriere: arriere.length,
-                  pairesExaminees: 0, interrompu: true};
+                  candidatsSonde: sondes.length, sansSonde: 0, pairesExaminees: 0, interrompu: true};
         }
         ctx.signaler(i, L * 2, 'recherche des amorces candidates');
       }
@@ -135,6 +205,12 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
         if (f) avant.push(f);
         const r = evaluer(seq, i, l, 'R', p);
         if (r) arriere.push(r);
+      }
+      if (p.sonde) {
+        for (let l = p.sondeLongMin; l <= p.sondeLongMax; l++) {
+          const s = evaluerSonde(seq, i, l, p);
+          if (s) sondes.push(s);
+        }
       }
     }
 
@@ -191,9 +267,46 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
     }
 
     retenues.sort((a, b) => a.score - b.score);
-    if (retenues.length > p.maxPaires) retenues.length = p.maxPaires;
+
+    // 3. La sonde, cherchée sur les meilleures paires et non sur les millions
+    //    de couples examinés : elle ne départage pas les amorces, elle
+    //    complète celles qui tiennent déjà.
+    let finales: PaireAmorces[] = retenues;
+    let sansSonde = 0;
+    if (p.sonde) {
+      const debutsSonde = sondes.map((x) => x.debut);
+      const premiereSondeApres = (borne: number) => {
+        let lo = 0, hi = debutsSonde.length;
+        while (lo < hi) {
+          const mi = (lo + hi) >> 1;
+          if ((debutsSonde[mi] as number) < borne) lo = mi + 1; else hi = mi;
+        }
+        return lo;
+      };
+      const avecSonde: PaireAmorces[] = [];
+      for (const paire of retenues) {
+        let meilleure: Sonde | null = null;
+        let meilleurScore = Infinity;
+        for (let i = premiereSondeApres(paire.avant.fin + 1); i < sondes.length; i++) {
+          const s = sondes[i] as Sonde;
+          if (s.debut > paire.arriere.debut) break;      // rangées par position
+          if (s.fin >= paire.arriere.debut) continue;    // elle mordrait sur l'amorce arrière
+          const distance = s.debut - paire.avant.fin - 1;
+          // Près de l'amorce avant, et à la bonne température : les deux
+          // critères que suit un opérateur.
+          const score = Math.abs(s.tm - p.sondeTmOptimale) + distance / 25;
+          if (score < meilleurScore) { meilleurScore = score; meilleure = {...s, distanceAvant: distance}; }
+        }
+        if (!meilleure) { sansSonde++; continue; }
+        avecSonde.push({...paire, sonde: meilleure, score: paire.score + meilleurScore / 2});
+      }
+      avecSonde.sort((a, b) => a.score - b.score);
+      finales = avecSonde;
+    }
+    if (finales.length > p.maxPaires) finales.length = p.maxPaires;
+
     ctx.signaler(L * 2, L * 2, interrompu ? 'interrompu' : 'terminé');
-    return {paires: retenues, candidatsAvant: avant.length, candidatsArriere: arriere.length,
-            pairesExaminees: examinees, interrompu};
+    return {paires: finales, candidatsAvant: avant.length, candidatsArriere: arriere.length,
+            candidatsSonde: sondes.length, sansSonde, pairesExaminees: examinees, interrompu};
   }
 };

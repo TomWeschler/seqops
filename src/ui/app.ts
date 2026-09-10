@@ -10,7 +10,8 @@ import type {Enregistrement} from '../core/fasta.js';
 import {composition, corriger} from '../core/sequence.js';
 import type {Correction, OptionsCorrection} from '../core/sequence.js';
 import {rapportHtml, rapportTexte} from '../core/rapport.js';
-import type {ResultatAmorces} from '../calculs/amorces.js';
+import type {ResultatAmorces, Sonde} from '../calculs/amorces.js';
+import type {ResultatAnalyse} from '../calculs/analyse.js';
 import {ExecuteurLocal} from '../jobs/executeur-local.js';
 import type {Executeur, Tache} from '../jobs/types.js';
 import {dessiner} from './chromatogramme.js';
@@ -36,6 +37,7 @@ interface Etat {
   actif: number;
   vue: {premiere: number; combien: number};
   amorces?: {tache: string; resultat?: ResultatAmorces};
+  analyse?: {tache: string; resultat?: ResultatAnalyse};
 }
 
 const etat: Etat = {docs: [], actif: -1, vue: {premiere: 0, combien: 40}};
@@ -214,14 +216,77 @@ function rendreTaches(taches: readonly Tache[]): void {
         echouee: '<span class="pastille bad">échouée</span>',
         en_attente: '<span class="pastille">en attente</span>'
       };
+      const fini = t.etat !== 'en_cours';
       return `<li class="tache"><div class="t">
         <span class="nom">${ech(t.libelle)}</span>${etats[t.etat] ?? ''}
-        ${t.etat === 'en_cours' ? `<button data-arret="${t.id}">Arrêter</button>` : ''}
+        ${fini ? '' : `<button data-arret="${t.id}">Arrêter</button>`}
+        ${fini ? `<button class="croix" data-oubli="${t.id}" title="Retirer cette analyse"
+                    aria-label="Retirer ${ech(t.libelle)}">✕</button>` : ''}
       </div>
       <div class="jauge"><span style="width:${pct}%"></span></div>
       <div class="msg">${pct} % — ${ech(t.erreur ?? t.progression.message)}${t.partiel ? ' (résultat partiel)' : ''}</div>
       </li>`;
     }).join('');
+}
+
+function rendreAnalyse(r: ResultatAnalyse): void {
+  const box = $('#analyse-res');
+  const c = r.composition;
+  const kpis: [string, string, string][] = [
+    ['Longueur', `${nb(c.longueur)} nt`, c.autres ? `${nb(c.autres)} ambiguë(s)` : 'aucune ambiguïté'],
+    ['GC', `${nb(c.gc, 1)} %`, `biais ${c.skewGC >= 0 ? '+' : ''}${nb(c.skewGC, 3)}`],
+    ['Tm', r.tm === null ? '—' : `${nb(r.tm, 1)} °C`, r.tm === null ? 'hors domaine du calcul' : 'plus proche voisin'],
+    ['Masse', r.masse === null ? '—' : `${nb(r.masse / 1000, 1)} kDa`, 'simple brin'],
+    ['Cadres ouverts', nb(r.orfs.length), 'ATG → stop']
+  ];
+  const bases = (['A', 'C', 'G', 'T'] as const).map((b) =>
+    `<tr><td class="mono b-${b}"><strong>${b}</strong></td><td class="mono">${nb(c.n[b])}</td>
+     <td class="mono">${nb((c.n[b] / (c.longueur || 1)) * 100, 2)} %</td></tr>`).join('');
+
+  const orfs = r.orfs.length
+    ? `<div class="tbl"><table><thead><tr><th>Cadre</th><th>Début</th><th>Fin</th><th>aa</th>
+       <th>Stop</th><th>Protéine</th></tr></thead><tbody>` +
+      r.orfs.slice(0, 25).map((o) => `<tr><td class="mono">${o.cadre}</td>
+        <td class="mono">${nb(o.debut)}</td><td class="mono">${nb(o.fin)}</td>
+        <td class="mono">${nb(o.longueurAA)}</td>
+        <td>${o.avecStop ? '<span class="pastille ok">oui</span>' : '<span class="pastille warn">tronqué</span>'}</td>
+        <td class="mono" style="word-break:break-all">${ech(o.prot.slice(0, 60))}${o.prot.length > 60 ? ' …' : ''}</td>
+        </tr>`).join('') + '</tbody></table></div>' +
+      (r.orfs.length > 25 ? `<p class="note">${nb(r.orfs.length)} cadres au total, les 25 plus longs affichés.</p>` : '')
+    : '<p class="vide">Aucun cadre ouvert de la longueur demandée.</p>';
+
+  box.innerHTML =
+    `<div class="kpis">${kpis.map(([l, v, sub]) =>
+      `<div class="kpi"><div class="klbl">${l}</div><div class="kval">${v}</div><div class="ksub">${sub}</div></div>`).join('')}</div>
+     ${grapheGC(r)}
+     <h3>Bases</h3><div class="tbl"><table><thead><tr><th>Code</th><th>Nombre</th><th>Part</th></tr></thead>
+     <tbody>${bases}</tbody></table></div>
+     <h3>Cadres ouverts</h3>${orfs}`;
+}
+
+/** Le GC glissant : un tracé, pas un tableau de mille lignes. On échantillonne,
+ *  parce qu'un point par base sur un génome ne dit rien de plus et fige la page. */
+function grapheGC(r: ResultatAnalyse): string {
+  if (r.gc.length < 2) return '<p class="note">Séquence trop courte pour la fenêtre demandée.</p>';
+  const MAX = 1000;
+  const pas = Math.max(1, Math.ceil(r.gc.length / MAX));
+  const vus = r.gc.filter((_, i) => i % pas === 0);
+  const W = 1000, H = 120, m = 14;
+  const x = (i: number) => m + (W - 2 * m) * (vus.length === 1 ? 0 : i / (vus.length - 1));
+  const y = (v: number) => H - m - (H - 2 * m) * (v / 100);
+  const d = vus.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p.gc).toFixed(1)}`).join(' ');
+  const moyenne = r.composition.gc;
+  return `<h3>GC en fenêtre glissante</h3>
+    <svg class="graphe" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+         aria-label="GC en fenêtre glissante, de 0 à 100 %">
+      ${[0, 25, 50, 75, 100].map((v) =>
+        `<line x1="${m}" x2="${W - m}" y1="${y(v)}" y2="${y(v)}" stroke="#252535" stroke-width="1"/>`).join('')}
+      <line x1="${m}" x2="${W - m}" y1="${y(moyenne)}" y2="${y(moyenne)}" stroke="#60607a"
+            stroke-width="1" stroke-dasharray="4 4"/>
+      <path d="${d}" fill="none" stroke="#38bdf8" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <p class="note">${nb(r.gc.length)} positions calculées ; pointillé : moyenne de ${nb(moyenne, 1)} %.
+    Échelle verticale 0–100 %.</p>`;
 }
 
 function rendreAmorces(r: ResultatAmorces): void {
@@ -242,14 +307,22 @@ function rendreAmorces(r: ResultatAmorces): void {
           ${nb(r.pairesExaminees)} couples examinés).</p>`;
     return;
   }
+  const avecSonde = r.paires.some((p) => p.sonde);
+  const celluleSonde = (s?: Sonde) => s
+    ? `<td class="mono">${ech(s.seq)}<br><span class="note">brin ${s.brin} · ${nb(s.debut)}..${nb(s.fin)}
+       · Tm ${nb(s.tm, 1)} °C · GC ${nb(s.gc, 0)} % · à ${nb(s.distanceAvant)} nt de F</span></td>`
+    : '';
   box.innerHTML = `<p class="note">${nb(r.paires.length)} meilleures paires sur ${nb(r.pairesExaminees)} couples
-    examinés${r.interrompu ? ', recherche interrompue — résultat partiel' : ''}.</p>
+    examinés${r.interrompu ? ', recherche interrompue — résultat partiel' : ''}${
+      avecSonde ? ` ; ${nb(r.candidatsSonde)} sondes candidates recensées, ${nb(r.sansSonde)} paires écartées faute de sonde` : ''}.</p>
     <div class="tbl"><table><thead><tr><th>#</th><th>Amorce avant</th><th>Amorce arrière</th>
+    ${avecSonde ? '<th>Sonde</th>' : ''}
     <th>Amplicon</th><th>Tm F / R</th><th>ΔTm</th><th>Score</th></tr></thead><tbody>` +
     r.paires.map((p, i) => `<tr>
       <td class="mono">${i + 1}</td>
       <td class="mono">${ech(p.avant.seq)}<br><span class="note">${nb(p.avant.debut)}..${nb(p.avant.fin)} · GC ${nb(p.avant.gc, 0)} %</span></td>
       <td class="mono">${ech(p.arriere.seq)}<br><span class="note">${nb(p.arriere.debut)}..${nb(p.arriere.fin)} · GC ${nb(p.arriere.gc, 0)} %</span></td>
+      ${avecSonde ? celluleSonde(p.sonde) : ''}
       <td class="mono">${nb(p.amplicon)} nt</td>
       <td class="mono">${nb(p.avant.tm, 1)} / ${nb(p.arriere.tm, 1)}</td>
       <td class="mono">${nb(p.deltaTm, 1)}</td>
@@ -261,7 +334,9 @@ export function rendre(): void {
   rendreListe();
   const doc = docActif();
   const montrer = doc !== null;
-  for (const id of ['#p-lecture', '#p-sequence', '#p-taches']) $(id).hidden = !montrer;
+  for (const id of ['#p-lecture', '#p-sequence', '#p-analyse', '#p-amorces', '#p-taches']) {
+    $(id).hidden = !montrer;
+  }
   if (!doc) return;
   rendreMeta(doc);
   rendreSequence(doc);
@@ -436,15 +511,37 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
   });
 
   $('#taches').addEventListener('click', (e) => {
-    const id = (e.target as HTMLElement).dataset.arret;
-    if (id) executeur.annuler(id);
+    const cible = e.target as HTMLElement;
+    if (cible.dataset.arret) { executeur.annuler(cible.dataset.arret); return; }
+    const oubli = cible.dataset.oubli;
+    if (!oubli) return;
+    executeur.oublier(oubli);
+    // Retirer une analyse retire aussi ce qu'elle affichait : garder à l'écran
+    // le résultat d'une tâche effacée, c'est ne plus savoir d'où il vient.
+    if (etat.amorces?.tache === oubli) {
+      etat.amorces = undefined;
+      $('#resultats').innerHTML = '';
+    }
+    if (etat.analyse?.tache === oubli) {
+      etat.analyse = undefined;
+      $('#analyse-res').innerHTML = '<p class="vide">Analyse retirée. Relancez-la si besoin.</p>';
+    }
   });
 
   $('#btn-analyse').addEventListener('click', () => {
     const doc = docActif();
     if (!doc) return;
-    executeur.lancer('sequence/analyse', {brut: sequenceCourante(doc)}, {
-      libelle: `Analyse — ${doc.nom}`
+    $('#analyse-res').innerHTML = '<p class="vide">Analyse en cours…</p>';
+    executeur.lancer<ResultatAnalyse>('sequence/analyse', {
+      brut: sequenceCourante(doc),
+      fenetreGC: Number(($('#fenetre-gc') as HTMLInputElement).value) || 50,
+      orfMinAA: Number(($('#orf-min') as HTMLInputElement).value) || 30
+    }, {
+      libelle: `Analyse — ${doc.nom}`,
+      surFin: (t) => {
+        if (t.resultat) { etat.analyse = {tache: t.id, resultat: t.resultat}; rendreAnalyse(t.resultat); }
+        else $('#analyse-res').innerHTML = `<p class="err">${ech(t.erreur ?? 'aucun résultat')}</p>`;
+      }
     });
   });
 
@@ -452,12 +549,17 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
     const doc = docActif();
     if (!doc) return;
     const seq = sequenceCourante(doc);
+    const val = (id: string) => Number(($(id) as HTMLInputElement).value);
     const params = {
       seq,
-      ampliconMin: Number(($('#amp-min') as HTMLInputElement).value),
-      ampliconMax: Number(($('#amp-max') as HTMLInputElement).value),
-      tmMin: Number(($('#tm-min') as HTMLInputElement).value),
-      tmMax: Number(($('#tm-max') as HTMLInputElement).value)
+      ampliconMin: val('#amp-min'), ampliconMax: val('#amp-max'),
+      tmMin: val('#tm-min'), tmMax: val('#tm-max'),
+      tmOptimale: (val('#tm-min') + val('#tm-max')) / 2,
+      longMin: val('#lg-min'), longMax: val('#lg-max'),
+      sonde: ($('#opt-sonde') as HTMLInputElement).checked,
+      sondeTmMin: val('#sonde-tm-min'), sondeTmMax: val('#sonde-tm-max'),
+      sondeTmOptimale: (val('#sonde-tm-min') + val('#sonde-tm-max')) / 2,
+      sondeLongMin: val('#sonde-lg-min'), sondeLongMax: val('#sonde-lg-max')
     };
     $('#resultats').innerHTML = '<p class="vide">Recherche en cours…</p>';
     const id = executeur.lancer<ResultatAmorces>('amorces/balayage', params, {

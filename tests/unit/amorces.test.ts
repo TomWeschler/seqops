@@ -68,6 +68,11 @@ describe('balayage d’amorces', () => {
     expect(arret.interrompu).toBe(true);
   });
 
+  it('sans sonde demandée, aucune paire n’en porte', () => {
+    expect(r.paires.every((p) => p.sonde === undefined)).toBe(true);
+    expect(r.candidatsSonde).toBe(0);
+  });
+
   it('rend compte de son avancement', () => {
     const vus: number[] = [];
     balayageAmorces.executer({seq, ampliconMin: 150, ampliconMax: 600}, {
@@ -77,5 +82,66 @@ describe('balayage d’amorces', () => {
     expect(vus.length).toBeGreaterThan(1);
     expect(Math.max(...vus)).toBe(1);
     expect(vus[0]).toBeLessThan(0.5);
+  });
+});
+
+
+describe('sonde d’hydrolyse', () => {
+  const seq = sequence(2000, 11);
+  const avecSonde = balayageAmorces.executer(
+    {seq, ampliconMin: 120, ampliconMax: 400, maxPaires: 15, sonde: true}, contexte());
+
+  it('en trouve, et les place entre les deux amorces', () => {
+    expect(avecSonde.paires.length).toBeGreaterThan(0);
+    expect(avecSonde.candidatsSonde).toBeGreaterThan(0);
+    for (const p of avecSonde.paires) {
+      const s = p.sonde;
+      expect(s).toBeDefined();
+      expect(s!.debut).toBeGreaterThan(p.avant.fin);
+      expect(s!.fin).toBeLessThan(p.arriere.debut);
+      expect(s!.distanceAvant).toBe(s!.debut - p.avant.fin - 1);
+    }
+  });
+
+  it('respecte les règles propres à une sonde', () => {
+    for (const {sonde: s} of avecSonde.paires) {
+      // Un G en 5' éteint le fluorophore : la sonde ne rapporterait rien.
+      expect(s!.seq.startsWith('G')).toBe(false);
+      expect(s!.seq.length).toBeGreaterThanOrEqual(20);
+      expect(s!.seq.length).toBeLessThanOrEqual(30);
+      expect(s!.tm).toBeGreaterThanOrEqual(67);
+      expect(s!.tm).toBeLessThanOrEqual(73);
+      expect(s!.gc).toBeGreaterThanOrEqual(30);
+      expect(s!.gc).toBeLessThanOrEqual(80);
+      expect(s!.seq).not.toMatch(/G{4,}/);
+      // Elle est bien lue sur le brin qu'elle annonce.
+      const surLeDirect = seq.slice(s!.debut - 1, s!.fin);
+      expect(s!.seq).toBe(s!.brin === '+' ? surLeDirect : complementInverse(surLeDirect));
+    }
+  });
+
+  it('fond plus haut que ses amorces — c’est sa raison d’être', () => {
+    for (const p of avecSonde.paires) {
+      expect(p.sonde!.tm).toBeGreaterThan(Math.max(p.avant.tm, p.arriere.tm) + 3);
+    }
+  });
+
+  it('écarte les paires sans sonde exploitable, et le compte', () => {
+    const strict = balayageAmorces.executer(
+      // Une fenêtre de Tm que presque aucune sonde n'atteindra.
+      {seq, ampliconMin: 120, ampliconMax: 400, sonde: true, sondeTmMin: 84, sondeTmMax: 86},
+      contexte());
+    expect(strict.paires).toHaveLength(0);
+    expect(strict.sansSonde).toBeGreaterThan(0);
+  });
+
+  it('les longueurs de sonde demandées sont respectées', () => {
+    const court = balayageAmorces.executer(
+      {seq, ampliconMin: 120, ampliconMax: 400, sonde: true, sondeLongMin: 24, sondeLongMax: 26},
+      contexte());
+    for (const p of court.paires) {
+      expect(p.sonde!.seq.length).toBeGreaterThanOrEqual(24);
+      expect(p.sonde!.seq.length).toBeLessThanOrEqual(26);
+    }
   });
 });

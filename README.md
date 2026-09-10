@@ -21,6 +21,7 @@ sur un poste d'entreprise.
 | Corriger | Espaces, numérotation, casse, U d'ARN, lacunes, codes IUPAC, caractères invalides — **chaque intervention est journalisée**. |
 | Analyser | Composition, GC, biais, GC glissant, Tm (Wallace, GC %, plus proche voisin SantaLucia 1998), masse, cadres ouverts, motifs IUPAC. |
 | Chercher des amorces | Balayage exhaustif des couples possibles, avec Tm, GC, pince GC en 3', répétitions et dimères. Long, interruptible, rend un résultat partiel. |
+| Chercher une sonde | Sonde d'hydrolyse (qPCR) entre les deux amorces : Tm et longueur réglables, jamais de G en 5', brin le plus riche en C, placée au plus près de l'amorce avant. |
 | Exporter | Rapport texte (cahier de manip, dépôt git) et rapport HTML autonome (envoi, impression), `.fas` corrigé. |
 
 ## Démarrer

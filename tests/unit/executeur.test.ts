@@ -94,6 +94,49 @@ describe('exécuteur local', () => {
   });
 });
 
+describe('oublier une tâche', () => {
+  const finie = () => new ExecuteurLocal(() => new FauxTravailleur((m) => [
+    {type: 'fini', id: m.id, resultat: 1, partiel: false}
+  ]) as unknown as Worker);
+
+  it('retire une tâche finie de la liste', async () => {
+    const ex = finie();
+    const id = ex.lancer('sequence/analyse', {});
+    await attendre();
+    expect(ex.taches()).toHaveLength(1);
+    ex.oublier(id);
+    expect(ex.taches()).toHaveLength(0);
+  });
+
+  it('prévient l’interface qu’elle a disparu', async () => {
+    const ex = finie();
+    const id = ex.lancer('sequence/analyse', {});
+    await attendre();
+    let dernier = -1;
+    ex.surChangement((t) => { dernier = t.length; });
+    ex.oublier(id);
+    expect(dernier).toBe(0);
+  });
+
+  it('refuse d’oublier une tâche qui tourne encore : on ne perd pas un calcul en cours', async () => {
+    const ex = new ExecuteurLocal(() => new FauxTravailleur(() => []) as unknown as Worker);
+    const id = ex.lancer('amorces/balayage', {});
+    ex.oublier(id);
+    expect(ex.taches()).toHaveLength(1);
+    expect(ex.taches()[0]?.etat).toBe('en_cours');
+  });
+
+  it('oublier deux fois, ou une tâche inconnue, ne fait rien de mal', async () => {
+    const ex = finie();
+    const id = ex.lancer('sequence/analyse', {});
+    await attendre();
+    ex.oublier(id);
+    ex.oublier(id);
+    ex.oublier('inexistante');
+    expect(ex.taches()).toHaveLength(0);
+  });
+});
+
 describe('registre des calculs', () => {
   it('refuse un calcul inconnu par une erreur nommée', async () => {
     const {trouverCalcul, calculs} = await import('../../src/calculs/registre.js');

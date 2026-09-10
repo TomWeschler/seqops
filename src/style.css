@@ -84,6 +84,12 @@ summary{cursor:pointer;font:700 .66rem/1 var(--mono);letter-spacing:.12em;
 .tache{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.6rem .75rem}
 .tache .t{display:flex;gap:.6rem;align-items:center;font-size:.8rem}
 .tache .t .nom{flex:1}
+.croix{background:none;border:1px solid transparent;color:var(--danger);
+       font-size:.95rem;line-height:1;padding:.25rem .45rem;letter-spacing:0}
+.croix:hover:not(:disabled){border-color:var(--danger);color:#fff;background:var(--danger)}
+.graphe{width:100%;height:130px;display:block;margin-top:.6rem}
+h3{font:700 .64rem/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;
+   color:var(--text-mid);margin:1rem 0 .5rem}
 .jauge{height:5px;background:var(--surface3);border-radius:3px;margin-top:.5rem;overflow:hidden}
 .jauge span{display:block;height:100%;background:var(--accent);transition:width .2s}
 .msg{font:.7rem var(--mono);color:var(--text-dim);margin-top:.35rem}

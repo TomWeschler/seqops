@@ -88,6 +88,13 @@ export class ExecuteurLocal implements Executeur {
     }
   }
 
+  oublier(id: string): void {
+    const piste = this.#pistes.get(id);
+    if (!piste || piste.tache.etat === 'en_cours') return;
+    this.#pistes.delete(id);
+    this.#prevenir();
+  }
+
   taches(): readonly Tache[] {
     return [...this.#pistes.values()].map((p) => p.tache).sort((a, b) => b.creeeLe - a.creeeLe);
   }
