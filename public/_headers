@@ -1,4 +1,6 @@
-# En-têtes servis par Cloudflare Pages (fichier lu tel quel à la racine du site).
+# En-têtes servis par Cloudflare (fichier lu tel quel à la racine du site).
+# Pages comme Workers-avec-ressources-statiques le lisent : le choix de la porte
+# d'entrée ne change rien à ce qui suit.
 #
 # COOP/COEP ouvrent l'isolation d'origine : sans elle, pas de SharedArrayBuffer,
 # donc pas de WebAssembly multi-fils. On en aura besoin le jour où un moteur

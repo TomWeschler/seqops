@@ -48,7 +48,9 @@ docs/           architecture, décisions, exploitation
 
 ## Déploiement
 
-Cloudflare Pages, gratuit, dépôt privé accepté — voir `docs/exploitation.md`.
+Cloudflare, gratuit, dépôt privé accepté : `npx wrangler login` puis
+`npm run deploiement`, ou par le tableau de bord — les deux voies sont décrites
+dans [`docs/exploitation.md`](docs/exploitation.md).
 GitHub Pages n'est pas utilisable ici : sur un dépôt privé, il exige un compte
 payant.
 
