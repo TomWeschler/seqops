@@ -21,9 +21,15 @@ export default defineConfig({
     ...(CHROME ? {launchOptions: {executablePath: CHROME}} : {})
   },
   webServer: {
+    // --host 127.0.0.1 est indispensable : par défaut vite écoute sur
+    // « localhost », que certains environnements (les exécuteurs GitHub) font
+    // résoudre en ::1 d'abord. Playwright, lui, sonde 127.0.0.1 et attend
+    // trois minutes une adresse qui ne répondra jamais.
     command: 'npm run build && npm run preview',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
-    timeout: 180_000
+    timeout: 180_000,
+    stdout: 'pipe',
+    stderr: 'pipe'
   }
 });
