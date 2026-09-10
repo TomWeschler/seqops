@@ -6,6 +6,14 @@
 <title>seqops — correction et analyse de séquences</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2309090e'/%3E%3Cpath d='M11 4c0 6 10 6 10 12s-10 6-10 12' fill='none' stroke='%234ade80' stroke-width='1.6'/%3E%3Cpath d='M21 4c0 6-10 6-10 12s10 6 10 12' fill='none' stroke='%2338bdf8' stroke-width='1.6'/%3E%3C/svg%3E">
 <meta name="theme-color" content="#09090e">
+<!-- La politique de sécurité du contenu en balise, faute d'en-tête : GitHub
+     Pages ne laisse pas choisir les en-têtes de réponse. C'est elle qui fait
+     APPLIQUER PAR LE NAVIGATEUR la promesse « aucune séquence ne sort du
+     poste » : connect-src 'none' interdit toute requête sortante, y compris
+     celle qu'un code fautif tenterait. Deux directives ne valent pas en
+     balise (frame-ancestors, X-Frame-Options) ; elles restent dans
+     public/_headers, pour un hébergeur qui saurait les servir. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; worker-src 'self' blob:; base-uri 'none'; form-action 'none'">
 </head>
 <body>
 <header>

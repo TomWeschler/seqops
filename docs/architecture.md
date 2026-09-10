@@ -4,7 +4,7 @@
 
 | Contrainte | Conséquence retenue |
 |---|---|
-| Hébergement gratuit | Site statique. Cloudflare Pages (dépôt privé accepté, gratuit). GitHub Pages exigerait un dépôt public ou un compte payant. |
+| Hébergement gratuit | Site statique sur GitHub Pages, dépôt public. Pages ne servant pas d'en-têtes choisis, la CSP passe en balise `<meta>` et l'isolation d'origine par un service worker sans cache — chacun éprouvé. |
 | Utilisable sur un PC d'entreprise | Rien à installer, rien à administrer : un onglet. Pas de police ni de script tiers, donc rien à débloquer chez l'informatique. |
 | Les séquences ne sortent pas du poste | Aucun serveur d'application. Tout le calcul est fait par le navigateur, dans des travailleurs. La politique de sécurité du contenu interdit toute connexion sortante. |
 | Ouvrir `.ab1` et `.fas`, modifier, exporter | Lecture ABIF en TypeScript, lecture/écriture FASTA, rapports texte et HTML. Le fichier d'origine n'est jamais réécrit sur place : l'utilisateur enregistre une copie. |
@@ -88,7 +88,9 @@ a déjà été trouvé** quand on arrête. C'est cette dernière qui compte le p
 pour un balayage exhaustif : arrêté à 60 %, il a déjà de bonnes paires.
 
 L'arrêt propre exige un drapeau en mémoire partagée (`SharedArrayBuffer`), donc
-l'isolation d'origine, donc les en-têtes COOP/COEP de `public/_headers` — un
+l'isolation d'origine, donc les en-têtes COOP/COEP — posés par le service worker
+`public/isolation.js` là où l'hébergeur ne les sert pas (`public/_headers` reste
+la référence de ce qu'il imite) — un
 calcul enfermé dans une boucle synchrone ne lit pas ses messages, mais il peut
 lire un entier. Sans ces en-têtes (par exemple en développement), l'arrêt
 supprime le travailleur : net, mais sans résultat partiel. L'application dit

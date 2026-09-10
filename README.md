@@ -48,18 +48,11 @@ docs/           architecture, décisions, exploitation
 
 ## Déploiement
 
-Cloudflare, gratuit, dépôt privé accepté : `npx wrangler login` puis
-`npm run deploiement`, ou par le tableau de bord — les deux voies sont décrites
-dans [`docs/exploitation.md`](docs/exploitation.md).
-GitHub Pages n'est pas utilisable ici : sur un dépôt privé, il exige un compte
-payant.
-
-## Ce projet doit sortir du dépôt où il est né
-
-Il vit provisoirement dans `seqops/` du dépôt `kanban`. La marche à suivre pour
-lui donner son propre dépôt privé, historique compris, est dans
-[`docs/nouveau-depot.md`](docs/nouveau-depot.md) — c'est la prochaine chose à
-faire.
+GitHub Pages, publié par l'intégration continue à chaque poussée sur `main` qui
+passe les épreuves. GitHub Pages ne servant pas d'en-têtes choisis, la politique
+de sécurité passe par une balise `<meta>` et l'isolation d'origine par un
+service worker qui ne met rien en cache — les deux sont éprouvés
+automatiquement. Voir [`docs/exploitation.md`](docs/exploitation.md).
 
 ## Licence
 

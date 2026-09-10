@@ -102,6 +102,16 @@ test('une recherche d’amorces rend compte, aboutit, et s’exporte', async ({p
   expect((await telechargement).suggestedFilename()).toMatch(/_rapport\.txt$/);
 });
 
+test('l’isolation d’origine est rétablie, même sans en-têtes du serveur', async ({page}) => {
+  // GitHub Pages ne pose pas COOP/COEP ; le service worker de public/isolation.js
+  // les ajoute. Sans cette épreuve, on ne saurait qu'il a cessé de marcher le
+  // jour où un arrêt de calcul perdrait ses résultats — c'est-à-dire trop tard.
+  await expect.poll(() => page.evaluate(() => globalThis.crossOriginIsolated), {timeout: 15_000})
+    .toBe(true);
+  expect(await page.evaluate(() => typeof SharedArrayBuffer !== 'undefined')).toBe(true);
+  await expect(page.locator('#isolation')).toContainText('isolation d’origine : oui');
+});
+
 test('une analyse longue peut être arrêtée', async ({page}) => {
   // Une séquence assez grande pour que le balayage dure : c'est le cas d'usage
   // « tester tous les couples possibles » qu'on doit pouvoir interrompre.
@@ -117,6 +127,10 @@ test('une analyse longue peut être arrêtée', async ({page}) => {
   await expect(page.locator('#taches .tache')).toContainText('en cours');
   await page.click('#taches button[data-arret]');
   await expect(page.locator('#taches .pastille.warn')).toHaveText('arrêtée', {timeout: 15_000});
+  // Et le point qui fait tout l'intérêt de l'arrêt : ce qui était déjà trouvé
+  // est rendu, pas jeté.
+  await expect(page.locator('#taches .msg')).toContainText('résultat partiel');
+  await expect(page.locator('#resultats')).toContainText('interrompue');
 });
 
 test('rien ne sort du poste', async ({page}) => {

@@ -227,9 +227,19 @@ function rendreTaches(taches: readonly Tache[]): void {
 function rendreAmorces(r: ResultatAmorces): void {
   const box = $('#resultats');
   if (!r.paires.length) {
-    box.innerHTML = `<p class="vide">Aucune paire ne satisfait ces critères
-      (${nb(r.candidatsAvant)} amorces avant, ${nb(r.candidatsArriere)} arrière,
-      ${nb(r.pairesExaminees)} couples examinés).</p>`;
+    // Sans paire, deux situations opposées qu'il ne faut surtout pas confondre :
+    // la recherche est allée au bout et les critères sont trop stricts, ou bien
+    // elle a été interrompue avant d'apparier quoi que ce soit. Dire « aucune
+    // paire ne satisfait ces critères » dans le second cas, c'est faire croire
+    // à un résultat là où il n'y a pas eu de recherche.
+    box.innerHTML = r.interrompu
+      ? `<p class="vide">Recherche interrompue avant l’appariement :
+          ${nb(r.candidatsAvant)} amorces avant et ${nb(r.candidatsArriere)} arrière
+          avaient été recensées, aucun couple n’avait encore été examiné.
+          Relancez pour aller au bout.</p>`
+      : `<p class="vide">Aucune paire ne satisfait ces critères
+          (${nb(r.candidatsAvant)} amorces avant, ${nb(r.candidatsArriere)} arrière,
+          ${nb(r.pairesExaminees)} couples examinés).</p>`;
     return;
   }
   box.innerHTML = `<p class="note">${nb(r.paires.length)} meilleures paires sur ${nb(r.pairesExaminees)} couples
@@ -291,15 +301,20 @@ function fasta(doc: DocumentSeq): string {
 
 /* ── Branchements ────────────────────────────────────────────────────────── */
 
-export function demarrer(ex?: Executeur): void {
+export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' | 'absente' = 'absente'): void {
   executeur = ex ?? new ExecuteurLocal();
   executeur.surChangement(rendreTaches);
   rendreTaches([]);
 
   $('#version').textContent = `seqops ${VERSION}`;
+  const dit = {
+    native: 'isolation d’origine : oui (en-têtes du serveur)',
+    'service-worker': 'isolation d’origine : oui (service worker)',
+    absente: 'isolation d’origine : non — l’arrêt d’un calcul supprime ses résultats partiels'
+  };
   $('#isolation').textContent = globalThis.crossOriginIsolated
-    ? 'isolation d’origine : oui (arrêt propre des calculs)'
-    : 'isolation d’origine : non (l’arrêt supprime le calcul)';
+    ? dit[isolation === 'absente' ? 'native' : isolation]
+    : dit.absente;
 
   const depot = $('#depot');
   const entree = $('#fichiers') as HTMLInputElement;

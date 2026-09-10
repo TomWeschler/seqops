@@ -12,7 +12,6 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
-    "deploiement": "npm run build && npx --yes wrangler@4 deploy",
     "verif": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
