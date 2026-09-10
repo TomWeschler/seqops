@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>seqops — correction et analyse de séquences</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2309090e'/%3E%3Cpath d='M11 4c0 6 10 6 10 12s-10 6-10 12' fill='none' stroke='%234ade80' stroke-width='1.6'/%3E%3Cpath d='M21 4c0 6-10 6-10 12s10 6 10 12' fill='none' stroke='%2338bdf8' stroke-width='1.6'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#09090e">
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>seqops <small>correction, analyse et amorces — hors ligne</small></h1>
+    <p class="confidentialite" id="confidentialite">Aucune donnée ne quitte ce poste.</p>
+  </div>
+</header>
+
+<main>
+  <section id="p-fichiers">
+    <h2>Fichiers</h2>
+    <div id="depot" class="depot">
+      <p><strong>Déposez des fichiers ici</strong> ou <button id="btn-parcourir" class="lien">parcourez…</button></p>
+      <p class="note">.ab1 (chromatogrammes) et .fas / .fasta / .fa / .seq / .txt</p>
+      <input type="file" id="fichiers" accept=".ab1,.fas,.fasta,.fa,.fna,.seq,.txt" multiple hidden>
+    </div>
+    <ul id="liste" class="liste"></ul>
+    <p class="err" id="erreur" hidden></p>
+  </section>
+
+  <section id="p-lecture" hidden>
+    <h2>Lecture</h2>
+    <div id="meta" class="kpis"></div>
+    <div id="chromato-boite" hidden>
+      <div class="barre">
+        <label class="champ">Fenêtre
+          <input type="range" id="zoom" min="10" max="200" step="5" value="40">
+        </label>
+        <label class="champ">Position
+          <input type="range" id="position" min="0" max="0" step="1" value="0">
+        </label>
+        <label class="case"><input type="checkbox" id="voir-ecrete" checked> Marquer l’écrêtage</label>
+      </div>
+      <canvas id="chromato" height="220"></canvas>
+    </div>
+  </section>
+
+  <section id="p-sequence" hidden>
+    <h2>Séquence</h2>
+    <div class="options">
+      <label class="case"><input type="checkbox" id="opt-uracile" checked> U → T</label>
+      <label class="case"><input type="checkbox" id="opt-lacunes" checked> Retirer les lacunes</label>
+      <label class="case"><input type="checkbox" id="opt-ambigus"> Ambigus → N</label>
+      <label class="case"><input type="checkbox" id="opt-invalides" checked> Retirer les invalides</label>
+      <label class="case"><input type="checkbox" id="opt-ecreter" checked> Écrêter par la qualité (.ab1)</label>
+    </div>
+    <div id="stats" class="kpis"></div>
+    <div id="seqvue" class="seqvue"></div>
+    <div class="barre">
+      <button id="btn-copier">Copier</button>
+      <button id="btn-fasta">Enregistrer le .fas</button>
+      <button id="btn-rapport-txt">Rapport texte</button>
+      <button id="btn-rapport-html">Rapport HTML</button>
+    </div>
+    <details class="edition">
+      <summary>Modifier la séquence</summary>
+      <div class="barre">
+        <label class="champ">De <input type="number" id="ed-debut" min="1" value="1" step="1"></label>
+        <label class="champ">à <input type="number" id="ed-fin" min="1" value="1" step="1"></label>
+        <label class="champ">par <input type="text" id="ed-texte" spellcheck="false" placeholder="ACGT, ou vide pour supprimer"></label>
+        <button id="btn-editer">Appliquer</button>
+        <button id="btn-annuler-edition">Revenir au fichier</button>
+      </div>
+      <p class="note">La modification porte sur la séquence corrigée et n’est écrite dans aucun fichier
+        tant que vous n’enregistrez pas le .fas. Chaque changement est inscrit au journal.</p>
+    </details>
+  </section>
+
+  <section id="p-taches" hidden>
+    <h2>Analyses</h2>
+    <div class="barre">
+      <button id="btn-analyse" class="primary">Analyser la séquence</button>
+      <button id="btn-amorces" class="primary">Chercher des amorces</button>
+      <span class="champ">amplicon
+        <input type="number" id="amp-min" value="100" min="50" step="10"> –
+        <input type="number" id="amp-max" value="800" min="60" step="10"> nt</span>
+      <span class="champ">Tm
+        <input type="number" id="tm-min" value="57" step="1"> –
+        <input type="number" id="tm-max" value="63" step="1"> °C</span>
+    </div>
+    <ul id="taches" class="taches"></ul>
+    <div id="resultats"></div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span id="version"></span> ·
+    <span id="isolation"></span> ·
+    <a href="https://github.com/" id="depot-lien" rel="noreferrer">dépôt</a>
+  </div>
+</footer>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

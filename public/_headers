@@ -1,0 +1,17 @@
+# En-têtes servis par Cloudflare Pages (fichier lu tel quel à la racine du site).
+#
+# COOP/COEP ouvrent l'isolation d'origine : sans elle, pas de SharedArrayBuffer,
+# donc pas de WebAssembly multi-fils. On en aura besoin le jour où un moteur
+# lourd (primer3, alignement) sera compilé en wasm ; les poser dès maintenant
+# évite de découvrir trop tard qu'une dépendance tierce chargée en <script>
+# les rend impossibles.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Frame-Options: DENY
+  # Aucune connexion sortante : l'application ne parle à personne, et le
+  # navigateur le fait respecter. C'est la garantie technique de la contrainte
+  # « les séquences ne quittent pas le poste ».
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
