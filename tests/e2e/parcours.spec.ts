@@ -236,6 +236,77 @@ test('les bases s’affichent et se corrigent sous le chromatogramme', async ({p
   await expect(page.locator('#bases-ligne .b.edite')).toHaveCount(0);
 });
 
+test('chaque lettre tombe exactement sous son pic', async ({page}) => {
+  // L'alignement ne se vérifie pas à l'œil : on lit les pixels de la toile,
+  // on y cherche le sommet du pic de chaque base, et on le compare au centre
+  // de la lettre. C'est la seule manière d'empêcher le décalage de revenir.
+  await page.setInputFiles('#fichiers', cheminAb1);
+  await expect(page.locator('#bases-ligne .b').first()).toBeVisible();
+
+  const mesurer = () => page.evaluate(() => {
+    const COULEURS: Record<string, [number, number, number]> = {
+      A: [0x4a, 0xde, 0x80], C: [0x38, 0xbd, 0xf8], G: [0xfb, 0xd1, 0x24], T: [0xf8, 0x71, 0x71]
+    };
+    const toile = document.querySelector('canvas') as HTMLCanvasElement;
+    const boiteToile = toile.getBoundingClientRect();
+    const dpr = toile.width / toile.clientWidth;
+    const image = toile.getContext('2d')!.getImageData(0, 0, toile.width, toile.height);
+
+    /** Colonne (en pixels CSS) où la courbe de cette base culmine, cherchée
+     *  autour d'une position attendue. */
+    const sommet = (base: string, centreCss: number, rayon: number): number | null => {
+      const cible = COULEURS[base];
+      if (!cible) return null;
+      let meilleurX = null as number | null;
+      let meilleurY = Infinity;
+      for (let dx = -rayon; dx <= rayon; dx++) {
+        const xCss = centreCss + dx;
+        const xDev = Math.round(xCss * dpr);
+        if (xDev < 0 || xDev >= image.width) continue;
+        for (let y = 0; y < image.height; y++) {
+          const k = (y * image.width + xDev) * 4;
+          const proche = Math.abs(image.data[k]! - cible[0]) < 60 &&
+                         Math.abs(image.data[k + 1]! - cible[1]) < 60 &&
+                         Math.abs(image.data[k + 2]! - cible[2]) < 60 &&
+                         image.data[k + 3]! > 120;
+          if (proche) {
+            if (y < meilleurY) { meilleurY = y; meilleurX = xCss; }
+            break;
+          }
+        }
+      }
+      return meilleurX;
+    };
+
+    const resultats: {base: string; ecart: number}[] = [];
+    for (const el of Array.from(document.querySelectorAll('#bases-ligne .b'))) {
+      const lettre = (el.textContent ?? '').trim();
+      if (!'ACGT'.includes(lettre)) continue;
+      const boite = el.getBoundingClientRect();
+      const centre = boite.left + boite.width / 2 - boiteToile.left;
+      const pic = sommet(lettre, centre, 12);
+      if (pic !== null) resultats.push({base: lettre, ecart: Math.abs(pic - centre)});
+    }
+    return resultats;
+  });
+
+  const verdict = (ecarts: {ecart: number}[]) => {
+    expect(ecarts.length).toBeGreaterThan(20);
+    const moyen = ecarts.reduce((s, e) => s + e.ecart, 0) / ecarts.length;
+    // Deux pixels : l'épaisseur du trait, pas un décalage.
+    expect(moyen).toBeLessThan(2);
+    expect(Math.max(...ecarts.map((e) => e.ecart))).toBeLessThan(4);
+  };
+
+  verdict(await mesurer());
+
+  // Et après un changement de taille de fenêtre : la géométrie du tracé dépend
+  // de la largeur, la ligne doit la suivre.
+  await page.setViewportSize({width: 900, height: 900});
+  await page.waitForTimeout(400);
+  verdict(await mesurer());
+});
+
 test('la prochaine ambiguïté se trouve, se propose et se corrige', async ({page}) => {
   await page.setInputFiles('#fichiers', cheminAmbigu);
 

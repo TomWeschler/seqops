@@ -14,7 +14,7 @@ import type {ResultatAmorces, Sonde} from '../calculs/amorces.js';
 import type {ResultatAnalyse} from '../calculs/analyse.js';
 import {ExecuteurLocal} from '../jobs/executeur-local.js';
 import type {Executeur, Tache} from '../jobs/types.js';
-import {dessiner} from './chromatogramme.js';
+import {dessiner, placesBases} from './chromatogramme.js';
 import {$, ech, nb, nomSur, telecharger} from './dom.js';
 
 export const VERSION = '0.1.0';
@@ -210,11 +210,22 @@ function rendreLigneBases(doc: DocumentSeq): void {
   const ligne = $('#bases-ligne');
   if (doc.genre !== 'ab1' || !doc.abif) { ligne.innerHTML = ''; return; }
   const bases = sequenceSource(doc, false);           // sans écrêtage : index du fichier
-  const premiere = etat.vue.premiere;
-  const derniere = Math.min(bases.length, premiere + etat.vue.combien);
+  const toile = $('#chromato') as HTMLCanvasElement;
+  const largeurPx = toile.clientWidth || ligne.clientWidth || 800;
+  const places = placesBases(doc.abif, etat.vue, largeurPx);
+  if (!places.length) { ligne.innerHTML = ''; return; }
+
+  // Chaque lettre est posée à la fraction de largeur exacte de son pic, dans
+  // une case qui s'étend jusqu'à mi-chemin de ses voisines. La police suit
+  // l'écartement : à quarante bases on lit, à deux cents on voit des couleurs.
+  const ecartMoyen = (places[places.length - 1]!.centre - places[0]!.centre) /
+                     Math.max(1, places.length - 1) * largeurPx;
+  ligne.style.fontSize = `${Math.max(6, Math.min(15, ecartMoyen * 0.78)).toFixed(1)}px`;
+
   const ecretage = doc.ecretage;
   const morceaux: string[] = [];
-  for (let i = premiere; i < derniere; i++) {
+  for (const place of places) {
+    const i = place.i;
     const b = bases[i] as string;
     const classes = ['b', `b-${'ACGT'.includes(b) ? b : 'N'}`];
     if (doc.editionsBases.has(i)) classes.push('edite');
@@ -222,7 +233,10 @@ function rendreLigneBases(doc: DocumentSeq): void {
     if (i === choisie) classes.push('choisie');
     const q = doc.abif.qualites[i];
     const titre = `position ${i + 1}${q === undefined ? '' : ` · qualité ${q}`}`;
-    morceaux.push(`<span class="${classes.join(' ')}" data-base="${i}" title="${titre}">${ech(b)}</span>`);
+    morceaux.push(
+      `<span class="${classes.join(' ')}" data-base="${i}" title="${titre}"` +
+      ` style="left:${(place.gauche * 100).toFixed(4)}%;width:${(place.largeur * 100).toFixed(4)}%">` +
+      `${ech(b)}</span>`);
   }
   ligne.innerHTML = morceaux.join('');
   rendrePalette(doc);
@@ -708,6 +722,15 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
       ev.preventDefault();
       corrigerBase(doc, choisie, lettre);
     }
+  });
+
+  let redessin: ReturnType<typeof setTimeout> | undefined;
+  globalThis.addEventListener('resize', () => {
+    clearTimeout(redessin);
+    redessin = setTimeout(() => {
+      const doc = docActif();
+      if (doc && doc.genre === 'ab1') rendreChromato(doc);
+    }, 120);
   });
 
   $('#btn-ambiguite').addEventListener('click', () => {

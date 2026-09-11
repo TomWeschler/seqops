@@ -114,16 +114,18 @@ footer a{color:var(--text-mid)}
 /* ── La ligne de bases sous le chromatogramme ─────────────────────────────
    Même largeur de caractère que le chromatogramme n'est pas possible sans
    figer la police ; on privilégie la lisibilité et le clic facile. */
-.bases{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:1px;margin-top:.35rem;
-       padding:.4rem .3rem;background:var(--bg);border:1px solid var(--border);
-       border-radius:8px;font:700 .95rem/1.4 var(--mono);letter-spacing:.02em}
+.bases{position:relative;height:1.9rem;margin-top:.3rem;background:var(--bg);
+       border:1px solid var(--border);border-radius:8px;
+       font-family:var(--mono);font-weight:700;overflow:hidden}
 .bases:focus{outline:none;border-color:var(--accent)}
-.bases .b{flex:1 0 auto;min-width:1.25rem;text-align:center;cursor:pointer;
-          border-radius:3px;border:1px solid transparent}
+/* Chaque base est posée à la fraction de largeur de son pic : mêmes écarts que
+   le tracé, y compris quand ils sont irréguliers — et ils le sont toujours. */
+.bases .b{position:absolute;top:0;height:100%;display:flex;align-items:center;
+          justify-content:center;cursor:pointer;border-radius:3px;
+          border:1px solid transparent;line-height:1;overflow:hidden}
 .bases .b:hover{background:var(--surface3)}
 .bases .b.choisie{background:var(--accent);color:#0b0b12;border-color:var(--accent)}
-.bases .b.edite{text-decoration:underline;text-decoration-color:var(--warn);
-                text-decoration-thickness:2px;text-underline-offset:3px}
+.bases .b.edite{box-shadow:inset 0 -3px 0 var(--warn)}
 .bases .b.hors{opacity:.35}
 .palette{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin-top:.5rem;
          padding:.5rem .6rem;background:var(--surface2);border:1px solid var(--border2);
