@@ -10,6 +10,11 @@
   --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
+/* Toute règle d'affichage écrase l'attribut hidden du navigateur : une seule
+   ligne oubliée et un panneau « caché » reste à l'écran. C'est arrivé deux
+   fois — la palette de bases, et le sélecteur d'enregistrement FASTA, visible
+   depuis le premier jour alors qu'il se croyait caché. */
+[hidden]{display:none !important}
 body{background:var(--bg);color:var(--text);font:15px/1.5 var(--sans);padding-bottom:3rem}
 .wrap,main{max-width:1100px;margin:0 auto;padding:0 1rem}
 header{border-bottom:1px solid var(--border);background:var(--surface);padding:1rem 0;margin-bottom:1.2rem}
@@ -105,3 +110,56 @@ footer{max-width:1100px;margin:1.5rem auto 0;padding:0 1rem;
 footer a{color:var(--text-mid)}
 .vide{color:var(--text-dim);font-style:italic;font-size:.82rem}
 @media(max-width:640px){body{font-size:14px}.kval{font-size:1.05rem}}
+
+/* ── La ligne de bases sous le chromatogramme ─────────────────────────────
+   Même largeur de caractère que le chromatogramme n'est pas possible sans
+   figer la police ; on privilégie la lisibilité et le clic facile. */
+.bases{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:1px;margin-top:.35rem;
+       padding:.4rem .3rem;background:var(--bg);border:1px solid var(--border);
+       border-radius:8px;font:700 .95rem/1.4 var(--mono);letter-spacing:.02em}
+.bases:focus{outline:none;border-color:var(--accent)}
+.bases .b{flex:1 0 auto;min-width:1.25rem;text-align:center;cursor:pointer;
+          border-radius:3px;border:1px solid transparent}
+.bases .b:hover{background:var(--surface3)}
+.bases .b.choisie{background:var(--accent);color:#0b0b12;border-color:var(--accent)}
+.bases .b.edite{text-decoration:underline;text-decoration-color:var(--warn);
+                text-decoration-thickness:2px;text-underline-offset:3px}
+.bases .b.hors{opacity:.35}
+.palette{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin-top:.5rem;
+         padding:.5rem .6rem;background:var(--surface2);border:1px solid var(--border2);
+         border-radius:8px}
+.palette .lettre{font:700 .8rem/1 var(--mono);padding:.4rem .6rem;min-width:2.1rem}
+.palette .lettre.actuelle{border-color:var(--accent);background:var(--accent-dim)}
+
+/* ── Les réglages, rangés par ce qu'ils règlent ───────────────────────── */
+.reglages{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:.8rem}
+fieldset{border:1px solid var(--border2);border-radius:8px;padding:.7rem .9rem .9rem;
+         background:var(--surface2)}
+fieldset.eteint{opacity:.5}
+fieldset.eteint .reglage{pointer-events:none}
+legend{font:700 .64rem/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+       color:var(--accent);padding:0 .4rem}
+fieldset.eteint legend{color:var(--text-mid)}
+legend .case{font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit}
+.reglage{display:grid;grid-template-columns:1fr 5.5rem auto 5.5rem 2.5rem;
+         align-items:center;gap:.4rem;margin-top:.5rem}
+.reglage .quoi{font-size:.8rem;color:var(--text-mid)}
+.reglage input{width:100%}
+.reglage .tiret{color:var(--text-dim);text-align:center}
+.reglage .unite{font:.72rem var(--mono);color:var(--text-dim)}
+
+/* ── Ambiguïtés et anomalies ──────────────────────────────────────────── */
+.ambiguite{margin-top:.6rem;padding:.6rem .7rem;background:var(--surface2);
+           border:1px solid var(--accent);border-radius:8px}
+.alerte{margin-top:.7rem;padding:.6rem .8rem;border-radius:8px;font-size:.85rem;
+        color:var(--danger);background:rgba(248,113,113,.1);
+        border:1px solid rgba(248,113,113,.45)}
+.rouge{color:var(--danger)}
+.ok-vert{color:var(--green);font-size:.85rem}
+
+/* ── Le détail des résultats, en plus gros ────────────────────────────── */
+#resultats table,#analyse-res table{font-size:.92rem}
+#resultats td.mono{font-size:.88rem;line-height:1.5}
+#resultats td.mono .note,#analyse-res td .note{font-size:.76rem}
+#resultats th,#analyse-res th{font-size:.66rem}
+#resultats tbody tr:hover{background:var(--surface2)}

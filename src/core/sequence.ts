@@ -47,6 +47,10 @@ export interface Correction {
     'miseEnForme' | 'numerotation' | 'casse' | 'uracile' | 'lacunes' | 'ambigus' | 'invalides', number>>;
   /** Positions (à partir de 0) touchées dans la séquence rendue. */
   readonly reparees: ReadonlySet<number>;
+  /** Pour chaque base rendue, son index dans le texte d'entrée. C'est ce qui
+   *  permet de revenir d'une position affichée au pic du chromatogramme dont
+   *  elle vient, même quand la correction a retiré des caractères. */
+  readonly sources: readonly number[];
   readonly propre: boolean;
 }
 
@@ -59,6 +63,7 @@ export function corriger(brut: string, opts: OptionsCorrection = {}): Correction
   const journal: EntreeJournal[] = [];
   const comptes = {miseEnForme: 0, numerotation: 0, casse: 0, uracile: 0, lacunes: 0, ambigus: 0, invalides: 0};
   const reparees = new Set<number>();
+  const sources: number[] = [];
 
   for (let i = 0; i < src.length; i++) {
     const c = src[i] as string;
@@ -73,6 +78,7 @@ export function corriger(brut: string, opts: OptionsCorrection = {}): Correction
       reparees.add(sortie.length);
       journal.push({pos: sortie.length + 1, avant: c, apres: o.uracile ? 'T' : 'U', type: 'uracile',
                     quoi: o.uracile ? 'U d’ARN converti en T' : 'U d’ARN laissé tel quel'});
+      sources.push(i);
       sortie.push(o.uracile ? 'T' : 'U');
       continue;
     }
@@ -83,21 +89,24 @@ export function corriger(brut: string, opts: OptionsCorrection = {}): Correction
                       quoi: 'lacune d’alignement retirée'});
       } else {
         reparees.add(sortie.length);
+        sources.push(i);
         sortie.push(c);
       }
       continue;
     }
-    if ((BASES as readonly string[]).includes(h)) { sortie.push(h); continue; }
+    if ((BASES as readonly string[]).includes(h)) { sources.push(i); sortie.push(h); continue; }
     if ((AMBIGUS as readonly string[]).includes(h)) {
       comptes.ambigus++;
       reparees.add(sortie.length);
       if (o.ambigusEnN && h !== 'N') {
         journal.push({pos: sortie.length + 1, avant: c, apres: 'N', type: 'ambigu',
                       quoi: `code ambigu ${h} (${IUPAC[h]}) ramené à N`});
+        sources.push(i);
         sortie.push('N');
       } else {
         journal.push({pos: sortie.length + 1, avant: c, apres: h, type: 'ambigu',
                       quoi: `code ambigu ${h} = ${(IUPAC[h] as string).split('').join('/')}`});
+        sources.push(i);
         sortie.push(h);
       }
       continue;
@@ -110,12 +119,13 @@ export function corriger(brut: string, opts: OptionsCorrection = {}): Correction
       reparees.add(sortie.length);
       journal.push({pos: sortie.length + 1, avant: c, apres: 'N', type: 'invalide',
                     quoi: `caractère invalide remplacé par N (position source ${i + 1})`});
+      sources.push(i);
       sortie.push('N');
     }
   }
   const propre = comptes.uracile === 0 && comptes.lacunes === 0 && comptes.ambigus === 0 &&
                  comptes.invalides === 0 && comptes.casse === 0;
-  return {seq: sortie.join(''), journal, comptes, reparees, propre};
+  return {seq: sortie.join(''), journal, comptes, reparees, sources, propre};
 }
 
 export interface Composition {
@@ -363,4 +373,22 @@ export function chercherMotif(seq: string, motif: string, aussiInverse = false):
   }
   hits.sort((a, b) => a.debut - b.debut || (a.brin < b.brin ? -1 : 1));
   return hits;
+}
+
+/** Position de la prochaine base ambiguë, à partir de `apres` (index 0).
+ *  Rend -1 s'il n'y en a plus. Le bouclage est laissé à l'appelant : sauter
+ *  silencieusement au début ferait croire à une progression qui n'existe pas. */
+export function prochaineAmbiguite(seq: string, apres = -1): number {
+  for (let i = Math.max(0, apres + 1); i < seq.length; i++) {
+    const c = seq[i] as string;
+    if (!'ACGT'.includes(c)) return i;
+  }
+  return -1;
+}
+
+/** Toutes les positions ambiguës (index 0), pour compter et pour surligner. */
+export function ambiguites(seq: string): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < seq.length; i++) if (!'ACGT'.includes(seq[i] as string)) out.push(i);
+  return out;
 }

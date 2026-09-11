@@ -110,15 +110,26 @@ export function chromatogrammeJouet(bases: string, qualites?: number[]): ArrayBu
   const longueurTrace = 20 + n * pas + 20;
   const traces: Record<string, number[]> = {A: [], C: [], G: [], T: []};
   for (const b of ['A', 'C', 'G', 'T']) traces[b] = new Array(longueurTrace).fill(0);
-  bases.split('').forEach((b, i) => {
-    const centre = pics[i] as number;
-    const cible = traces[b] ?? traces['A'] as number[];
+  const poser = (trace: number[], centre: number, sommet: number, facteur: number) => {
     for (let d = -5; d <= 5; d++) {
       const x = centre + d;
       if (x >= 0 && x < longueurTrace) {
-        cible[x] = Math.round(1000 * Math.exp(-(d * d) / 6) * ((q[i] ?? 30) / 55));
+        trace[x] = Math.max(trace[x] ?? 0, Math.round(sommet * Math.exp(-(d * d) / 6) * facteur));
       }
     }
+  };
+  bases.split('').forEach((b, i) => {
+    const centre = pics[i] as number;
+    const facteur = (q[i] ?? 30) / 55;
+    if (b === 'A' || b === 'C' || b === 'G' || b === 'T') {
+      poser(traces[b] as number[], centre, 1000, facteur);
+      return;
+    }
+    // Une base ambiguë, c'est deux pics de hauteur voisine : c'est exactement
+    // ce que le séquenceur n'a pas su trancher, et ce que l'outil doit montrer
+    // plutôt qu'un pic unique inventé.
+    poser(traces['A'] as number[], centre, 1000, facteur);
+    poser(traces['G'] as number[], centre, 850, facteur);
   });
   // FWO_ dit dans quel ordre les quatre traces sont rangées : ici G, A, T, C,
   // l'ordre habituel des séquenceurs — c'est justement ce qu'il ne faut pas

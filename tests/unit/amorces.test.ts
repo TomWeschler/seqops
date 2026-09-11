@@ -126,6 +126,26 @@ describe('sonde d’hydrolyse', () => {
     }
   });
 
+  it('colle la sonde à l’une des deux amorces', () => {
+    for (const {sonde: s} of avecSonde.paires) {
+      expect(Math.min(s!.distanceAvant, s!.distanceArriere)).toBeLessThanOrEqual(1);
+      expect(s!.collee).toBe(s!.distanceAvant <= s!.distanceArriere ? 'F' : 'R');
+    }
+  });
+
+  it('la distance autorisée se règle, et elle mord', () => {
+    const commun = {seq, ampliconMin: 120, ampliconMax: 400, sonde: true, maxPaires: 40};
+    const collee = balayageAmorces.executer({...commun, sondeDistanceMax: 0}, contexte());
+    const large = balayageAmorces.executer({...commun, sondeDistanceMax: 60}, contexte());
+    for (const {sonde: s} of collee.paires) {
+      expect(Math.min(s!.distanceAvant, s!.distanceArriere)).toBe(0);
+    }
+    // Desserrer la contrainte ne peut pas faire perdre de paires.
+    expect(large.paires.length).toBeGreaterThanOrEqual(collee.paires.length);
+    expect(large.paires.some((p) => Math.min(p.sonde!.distanceAvant, p.sonde!.distanceArriere) > 1))
+      .toBe(true);
+  });
+
   it('écarte les paires sans sonde exploitable, et le compte', () => {
     const strict = balayageAmorces.executer(
       // Une fenêtre de Tm que presque aucune sonde n'atteindra.

@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {ecreterMott, lireAbif, ErreurAbif} from '../../src/core/abif.js';
+import {ecreterMott, lireAbif, picLePlusHaut, ErreurAbif} from '../../src/core/abif.js';
 import {chromatogrammeJouet, entreeChar, fabriquerAbif} from './_abif.js';
 
 const BASES = 'ACGTACGTACGTAAGGCCTTAACCGGTTACGTACGTACGTGGCCAATTCCGGATCGATCGA';
@@ -78,5 +78,22 @@ describe('écrêtage des extrémités', () => {
 
   it('supporte une lecture sans qualités', () => {
     expect(ecreterMott([])).toMatchObject({debut: 0, fin: 0});
+  });
+});
+
+describe('pic le plus haut', () => {
+  it('rend la base dominante et le rapport au second', () => {
+    const a = lireAbif(chromatogrammeJouet('ACGT'));
+    for (const [i, base] of [...'ACGT'].entries()) {
+      const pic = picLePlusHaut(a, i);
+      expect(pic?.base).toBe(base);
+      expect(pic?.rapport).toBe(Infinity);       // le jouet n'a qu'une trace par base
+      expect(pic?.hauteurs[base as 'A']).toBeGreaterThan(0);
+    }
+  });
+
+  it('rend null hors de la lecture', () => {
+    const a = lireAbif(chromatogrammeJouet('ACGT'));
+    expect(picLePlusHaut(a, 99)).toBeNull();
   });
 });

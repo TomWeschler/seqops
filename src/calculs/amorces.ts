@@ -38,6 +38,11 @@ export interface ParamsAmorces {
   readonly sondeTmOptimale?: number;
   readonly sondeLongMin?: number;
   readonly sondeLongMax?: number;
+  /** Distance maximale, en bases, entre la sonde et l'une des deux amorces.
+   *  0 = collée à l'une des deux. C'est la contrainte qui compte en qPCR :
+   *  une sonde perdue au milieu de l'amplicon donne un signal plus tardif et
+   *  plus faible. Il suffit qu'elle soit près de F OU de R. */
+  readonly sondeDistanceMax?: number;
 }
 
 export interface Amorce {
@@ -64,6 +69,10 @@ export interface Sonde {
   readonly gc: number;
   /** Bases entre la fin de l'amorce avant et le début de la sonde. */
   readonly distanceAvant: number;
+  /** Bases entre la fin de la sonde et le début de l'amorce arrière. */
+  readonly distanceArriere: number;
+  /** L'amorce dont la sonde est la plus proche, et de combien. */
+  readonly collee: 'F' | 'R';
 }
 
 export interface PaireAmorces {
@@ -134,7 +143,8 @@ function evaluerSonde(
     if (c.gc < 30 || c.gc > 80) continue;
     const tm = tmPlusProcheVoisin(oligo, p.oligoNM, p.selMM);
     if (tm === null || tm < p.sondeTmMin || tm > p.sondeTmMax) continue;
-    return {brin, debut: debut + 1, fin: debut + longueur, seq: oligo, tm, gc: c.gc, distanceAvant: 0};
+    return {brin, debut: debut + 1, fin: debut + longueur, seq: oligo, tm, gc: c.gc,
+            distanceAvant: 0, distanceArriere: 0, collee: 'F'};
   }
   return null;
 }
@@ -177,7 +187,8 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
       // Huit à dix degrés au-dessus des amorces : la règle de la qPCR.
       sondeTmMin: params.sondeTmMin ?? 67, sondeTmMax: params.sondeTmMax ?? 73,
       sondeTmOptimale: params.sondeTmOptimale ?? 70,
-      sondeLongMin: params.sondeLongMin ?? 20, sondeLongMax: params.sondeLongMax ?? 30
+      sondeLongMin: params.sondeLongMin ?? 20, sondeLongMax: params.sondeLongMax ?? 30,
+      sondeDistanceMax: params.sondeDistanceMax ?? 1
     };
     const seq = p.seq;
     const L = seq.length;
@@ -291,11 +302,18 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
           const s = sondes[i] as Sonde;
           if (s.debut > paire.arriere.debut) break;      // rangées par position
           if (s.fin >= paire.arriere.debut) continue;    // elle mordrait sur l'amorce arrière
-          const distance = s.debut - paire.avant.fin - 1;
-          // Près de l'amorce avant, et à la bonne température : les deux
-          // critères que suit un opérateur.
-          const score = Math.abs(s.tm - p.sondeTmOptimale) + distance / 25;
-          if (score < meilleurScore) { meilleurScore = score; meilleure = {...s, distanceAvant: distance}; }
+          const distanceAvant = s.debut - paire.avant.fin - 1;
+          const distanceArriere = paire.arriere.debut - s.fin - 1;
+          // Collée à l'une OU à l'autre : une sonde au milieu de l'amplicon
+          // donne un signal plus tardif, c'est tout l'enjeu du réglage.
+          const proche = Math.min(distanceAvant, distanceArriere);
+          if (proche > p.sondeDistanceMax) continue;
+          const score = Math.abs(s.tm - p.sondeTmOptimale) + proche;
+          if (score < meilleurScore) {
+            meilleurScore = score;
+            meilleure = {...s, distanceAvant, distanceArriere,
+                         collee: distanceAvant <= distanceArriere ? 'F' : 'R'};
+          }
         }
         if (!meilleure) { sansSonde++; continue; }
         avecSonde.push({...paire, sonde: meilleure, score: paire.score + meilleurScore / 2});

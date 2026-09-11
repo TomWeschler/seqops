@@ -1,6 +1,9 @@
 import {describe, expect, it} from 'vitest';
-import {chercherMotif, complementInverse, composition, corriger, gcGlissant, masse, motifEnRegex,
-        orfs, tmPlusProcheVoisin, tmWallace, traduire, traduireCodon} from '../../src/core/sequence.js';
+import {ambiguites, chercherMotif, complementInverse, composition, corriger, gcGlissant, masse,
+        motifEnRegex, orfs, prochaineAmbiguite, tmPlusProcheVoisin, tmWallace, traduire,
+        traduireCodon} from '../../src/core/sequence.js';
+
+const ADN = {prochaineAmbiguite, ambiguites};
 
 describe('correction', () => {
   it('nettoie une séquence recopiée d’un PDF sans rien inventer', () => {
@@ -104,5 +107,34 @@ describe('motifs', () => {
     expect(chercherMotif('GGACCGGTCC', 'GGWCC')).toHaveLength(2);
     expect(motifEnRegex('GGZCC')).toBeNull();
     expect(motifEnRegex('')).toBeNull();
+  });
+});
+
+describe('ambiguïtés', () => {
+  it('trouve la suivante, et dit quand il n’y en a plus', () => {
+    const {prochaineAmbiguite, ambiguites} = ADN;
+    expect(prochaineAmbiguite('ACGTNACGTRACGT')).toBe(4);
+    expect(prochaineAmbiguite('ACGTNACGTRACGT', 4)).toBe(9);
+    expect(prochaineAmbiguite('ACGTNACGTRACGT', 9)).toBe(-1);
+    expect(prochaineAmbiguite('ACGTACGT')).toBe(-1);
+    expect(ambiguites('ACGTNACGTRACGT')).toEqual([4, 9]);
+    expect(ambiguites('')).toEqual([]);
+  });
+
+  it('ne boucle pas toute seule sur le début', () => {
+    expect(ADN.prochaineAmbiguite('NACGT', 0)).toBe(-1);
+  });
+});
+
+describe('traçabilité des positions', () => {
+  it('chaque base rendue sait d’où elle vient', () => {
+    const brut = '  ac 12 xgu-t ';
+    const r = corriger(brut);
+    expect(r.seq).toBe('ACGTT');
+    expect(r.sources).toHaveLength(r.seq.length);
+    // La source rend bien le caractère d'origine, casse et U compris.
+    expect(r.sources.map((i) => brut[i])).toEqual(['a', 'c', 'g', 'u', 't']);
+    // Les index sont strictement croissants : on ne remonte jamais en arrière.
+    expect([...r.sources].sort((a, b) => a - b)).toEqual([...r.sources]);
   });
 });

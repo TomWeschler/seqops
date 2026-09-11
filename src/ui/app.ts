@@ -3,11 +3,11 @@
  *  L'état tient dans une seule structure et chaque action la remplace : c'est
  *  ce qui permet d'afficher un avant/après honnête et de tout journaliser. */
 
-import {ecreterMott, lireAbif, ErreurAbif} from '../core/abif.js';
+import {ecreterMott, lireAbif, picLePlusHaut, ErreurAbif} from '../core/abif.js';
 import type {Ecretage, LectureAbif} from '../core/abif.js';
 import {ecrireFasta, lireFasta, remplacerSegment, remplacerSequence} from '../core/fasta.js';
 import type {Enregistrement} from '../core/fasta.js';
-import {composition, corriger} from '../core/sequence.js';
+import {composition, corriger, prochaineAmbiguite, IUPAC} from '../core/sequence.js';
 import type {Correction, OptionsCorrection} from '../core/sequence.js';
 import {rapportHtml, rapportTexte} from '../core/rapport.js';
 import type {ResultatAmorces, Sonde} from '../calculs/amorces.js';
@@ -29,6 +29,10 @@ export interface DocumentSeq {
   enrIndex: number;
   /** Séquence modifiée à la main ; absente tant qu'on n'a rien changé. */
   edite?: string;
+  /** Corrections base à base sur un chromatogramme, par index de base appelée
+   *  dans le fichier — donc stables quels que soient l'écrêtage et la
+   *  correction appliqués ensuite. */
+  editionsBases: Map<number, string>;
   journalEdition: string[];
 }
 
@@ -41,6 +45,10 @@ interface Etat {
 }
 
 const etat: Etat = {docs: [], actif: -1, vue: {premiere: 0, combien: 40}};
+/** Base sélectionnée dans la ligne sous le chromatogramme (index fichier). */
+let choisie = -1;
+/** Position, dans la séquence corrigée, de la dernière ambiguïté visitée. */
+let ambiguiteCourante = -1;
 let executeur: Executeur;
 
 /* ── Chargement ──────────────────────────────────────────────────────────── */
@@ -52,12 +60,14 @@ export async function chargerFichier(f: File): Promise<DocumentSeq> {
   if (/\.ab1$/i.test(nom)) {
     const abif = lireAbif(await f.arrayBuffer());
     const ecretage = abif.qualites.length ? ecreterMott(abif.qualites) : undefined;
-    return {id: identifiant(), nom, genre: 'ab1', abif, ecretage, enrs: [], enrIndex: 0, journalEdition: []};
+    return {id: identifiant(), nom, genre: 'ab1', abif, ecretage, enrs: [], enrIndex: 0,
+            editionsBases: new Map(), journalEdition: []};
   }
   const texte = await f.text();
   const enrs = lireFasta(texte);
   if (!enrs.length) throw new Error(`${nom} ne contient aucune séquence lisible.`);
-  return {id: identifiant(), nom, genre: 'fas', enrs, enrIndex: 0, journalEdition: []};
+  return {id: identifiant(), nom, genre: 'fas', enrs, enrIndex: 0,
+          editionsBases: new Map(), journalEdition: []};
 }
 
 async function accepter(fichiers: FileList | File[]): Promise<void> {
@@ -95,11 +105,32 @@ function optionsCorrection(): OptionsCorrection {
  *  chromatogramme (écrêtées si demandé) ou enregistrement FASTA choisi. */
 export function sequenceSource(doc: DocumentSeq, ecreter: boolean): string {
   if (doc.genre === 'ab1') {
-    const bases = doc.abif?.bases ?? '';
+    let bases = doc.abif?.bases ?? '';
+    if (doc.editionsBases.size) {
+      const lettres = bases.split('');
+      for (const [i, b] of doc.editionsBases) if (i >= 0 && i < lettres.length) lettres[i] = b;
+      bases = lettres.join('');
+    }
     if (ecreter && doc.ecretage) return bases.slice(doc.ecretage.debut, doc.ecretage.fin);
     return bases;
   }
   return doc.enrs[doc.enrIndex]?.seq ?? '';
+}
+
+/** Décalage entre la séquence affichée et les bases du fichier : l'écrêtage.
+ *  C'est lui qui permet de retrouver le pic d'où vient une base corrigée. */
+function decalage(doc: DocumentSeq): number {
+  const ecreter = ($('#opt-ecreter') as HTMLInputElement).checked;
+  return doc.genre === 'ab1' && ecreter && doc.ecretage ? doc.ecretage.debut : 0;
+}
+
+/** Index de la base dans le fichier .ab1, à partir d'une position de la
+ *  séquence corrigée. Passe par la table des sources : une correction qui
+ *  retire un caractère décale tout ce qui suit. */
+export function indexFichier(doc: DocumentSeq, positionCorrigee: number): number {
+  const corr = correctionCourante(doc);
+  const dansSource = corr.sources[positionCorrigee];
+  return dansSource === undefined ? -1 : dansSource + decalage(doc);
 }
 
 function correctionCourante(doc: DocumentSeq): Correction {
@@ -122,7 +153,7 @@ function rendreListe(): void {
     return `<li data-i="${i}" class="${i === etat.actif ? 'actif' : ''}">
       <span class="pastille ${d.genre}">${d.genre}</span>
       <span class="nom">${ech(d.nom)} <span class="note">${detail}</span></span>
-      ${d.edite !== undefined ? '<span class="pastille warn">modifié</span>' : ''}
+      ${d.edite !== undefined || d.editionsBases.size ? '<span class="pastille warn">modifié</span>' : ''}
       <button class="sup" data-sup="${i}" title="Retirer">×</button></li>`;
   }).join('');
 }
@@ -163,11 +194,98 @@ function rendreMeta(doc: DocumentSeq): void {
 
 function rendreChromato(doc: DocumentSeq): void {
   if (doc.genre !== 'ab1' || !doc.abif) return;
+  rendreLigneBases(doc);
   const marquer = ($('#voir-ecrete') as HTMLInputElement).checked;
   dessiner($('#chromato') as HTMLCanvasElement, doc.abif, {
     premiere: etat.vue.premiere, combien: etat.vue.combien,
     ...(marquer && doc.ecretage ? {ecretage: {debut: doc.ecretage.debut, fin: doc.ecretage.fin}} : {})
   });
+}
+
+const LETTRES = ['A', 'C', 'G', 'T', 'N', 'R', 'Y', 'S', 'W', 'K', 'M'] as const;
+
+/** La ligne des bases appelées, sous le chromatogramme : on lit la séquence
+ *  là où on regarde les pics, et on la corrige au même endroit. */
+function rendreLigneBases(doc: DocumentSeq): void {
+  const ligne = $('#bases-ligne');
+  if (doc.genre !== 'ab1' || !doc.abif) { ligne.innerHTML = ''; return; }
+  const bases = sequenceSource(doc, false);           // sans écrêtage : index du fichier
+  const premiere = etat.vue.premiere;
+  const derniere = Math.min(bases.length, premiere + etat.vue.combien);
+  const ecretage = doc.ecretage;
+  const morceaux: string[] = [];
+  for (let i = premiere; i < derniere; i++) {
+    const b = bases[i] as string;
+    const classes = ['b', `b-${'ACGT'.includes(b) ? b : 'N'}`];
+    if (doc.editionsBases.has(i)) classes.push('edite');
+    if (ecretage && (i < ecretage.debut || i >= ecretage.fin)) classes.push('hors');
+    if (i === choisie) classes.push('choisie');
+    const q = doc.abif.qualites[i];
+    const titre = `position ${i + 1}${q === undefined ? '' : ` · qualité ${q}`}`;
+    morceaux.push(`<span class="${classes.join(' ')}" data-base="${i}" title="${titre}">${ech(b)}</span>`);
+  }
+  ligne.innerHTML = morceaux.join('');
+  rendrePalette(doc);
+}
+
+function rendrePalette(doc: DocumentSeq): void {
+  const palette = $('#palette');
+  if (choisie < 0 || doc.genre !== 'ab1' || !doc.abif) { palette.hidden = true; return; }
+  const bases = sequenceSource(doc, false);
+  const actuelle = bases[choisie] ?? '?';
+  const pic = picLePlusHaut(doc.abif, choisie);
+  palette.hidden = false;
+  palette.innerHTML =
+    `<span class="note">Base <strong>${nb(choisie + 1)}</strong> du fichier — lue <strong class="b-${'ACGT'.includes(actuelle) ? actuelle : 'N'}">${ech(actuelle)}</strong>` +
+    (pic ? ` · pic le plus haut <strong class="b-${pic.base}">${pic.base}</strong>` +
+           ` (${pic.rapport === Infinity ? 'seul pic' : `${nb(pic.rapport, 1)}× le second`})` : '') +
+    '</span>' +
+    LETTRES.map((l) => `<button class="lettre b-${'ACGT'.includes(l) ? l : 'N'}${l === actuelle ? ' actuelle' : ''}"` +
+      ` data-lettre="${l}">${l}</button>`).join('') +
+    (doc.editionsBases.has(choisie)
+      ? '<button data-lettre="__annuler">Rétablir</button>' : '');
+}
+
+function corrigerBase(doc: DocumentSeq, index: number, lettre: string): void {
+  const original = (doc.abif?.bases ?? '')[index];
+  if (original === undefined) return;
+  // Une correction manuelle repart du fichier : garder par-dessus une
+  // réécriture de segment donnerait une séquence dont plus personne ne saurait
+  // dire d'où elle vient.
+  if (doc.edite !== undefined) {
+    delete doc.edite;
+    doc.journalEdition.push('correction base à base : retour à la séquence du fichier');
+  }
+  if (lettre === '__annuler' || lettre === original) {
+    doc.editionsBases.delete(index);
+    doc.journalEdition.push(`position ${index + 1} : rétablie en ${original}`);
+  } else {
+    doc.editionsBases.set(index, lettre);
+    doc.journalEdition.push(`position ${index + 1} : ${original} → ${lettre}`);
+  }
+  rendre();
+}
+
+/** Ce qui cloche dans la séquence, dit en rouge : des N, des codes ambigus, des
+ *  caractères qui n'avaient rien à y faire. Un chiffre douteux recopié dans un
+ *  cahier de manip coûte plus cher qu'un bandeau voyant. */
+function alerteQualite(doc: DocumentSeq): string {
+  const corr = correctionCourante(doc);
+  const c = composition(sequenceCourante(doc));
+  const griefs: string[] = [];
+  if (c.autres > 0) {
+    const detail = Object.entries(c.amb).sort().map(([l, n]) => `${n} ${l}`).join(', ');
+    griefs.push(`<strong>${nb(c.autres)} position${c.autres > 1 ? 's' : ''} ambiguë${c.autres > 1 ? 's' : ''}</strong> (${ech(detail)})`);
+  }
+  if (corr.comptes.invalides > 0) {
+    griefs.push(`<strong>${nb(corr.comptes.invalides)} caractère${corr.comptes.invalides > 1 ? 's' : ''} invalide${corr.comptes.invalides > 1 ? 's' : ''}</strong> dans le fichier`);
+  }
+  if (corr.comptes.lacunes > 0) {
+    griefs.push(`${nb(corr.comptes.lacunes)} lacune${corr.comptes.lacunes > 1 ? 's' : ''} d’alignement`);
+  }
+  if (!griefs.length) return '';
+  return `<p class="alerte">⚠ ${griefs.join(' · ')} — ces positions ne valent pas une base lue,
+    et aucune amorce ne sera dessinée dessus. Le bouton « Prochaine ambiguïté » les parcourt une à une.</p>`;
 }
 
 function rendreSequence(doc: DocumentSeq): void {
@@ -176,13 +294,18 @@ function rendreSequence(doc: DocumentSeq): void {
   const c = composition(seq);
   const co = corr.comptes;
   const touches = co.uracile + co.lacunes + co.ambigus + co.invalides;
+  const modifs = doc.journalEdition.length;
   $('#stats').innerHTML = [
-    ['Longueur', nb(seq.length) + ' nt', c.autres ? `${nb(c.autres)} ambiguë(s)` : 'aucune ambiguïté'],
+    ['Longueur', nb(seq.length) + ' nt', c.autres ? `<span class="rouge">${nb(c.autres)} ambiguë(s)</span>` : 'aucune ambiguïté'],
     ['GC', nb(c.gc, 1) + ' %', `AT ${nb(c.at, 1)} %`],
+    ['Ambiguïtés', c.autres ? `<span class="rouge">${nb(c.autres)}</span>` : '0',
+     c.autres ? 'à trancher avant de commander' : 'aucune'],
     ['Corrections', nb(touches), touches ? 'voir le rapport' : 'séquence propre'],
-    ['Modifications', nb(doc.journalEdition.length), doc.edite === undefined ? 'aucune' : 'à la main']
+    ['Modifications', nb(modifs), modifs ? 'à la main' : 'aucune']
   ].map(([l, v, s]) =>
     `<div class="kpi"><div class="klbl">${l}</div><div class="kval">${v}</div><div class="ksub">${s}</div></div>`).join('');
+  const alerte = $('#alerte-sequence');
+  alerte.innerHTML = alerteQualite(doc);
 
   const limite = Math.min(seq.length, 6000);
   const largeur = String(seq.length).length;
@@ -233,7 +356,8 @@ function rendreAnalyse(r: ResultatAnalyse): void {
   const box = $('#analyse-res');
   const c = r.composition;
   const kpis: [string, string, string][] = [
-    ['Longueur', `${nb(c.longueur)} nt`, c.autres ? `${nb(c.autres)} ambiguë(s)` : 'aucune ambiguïté'],
+    ['Longueur', `${nb(c.longueur)} nt`,
+     c.autres ? `<span class="rouge">${nb(c.autres)} ambiguë(s)</span>` : 'aucune ambiguïté'],
     ['GC', `${nb(c.gc, 1)} %`, `biais ${c.skewGC >= 0 ? '+' : ''}${nb(c.skewGC, 3)}`],
     ['Tm', r.tm === null ? '—' : `${nb(r.tm, 1)} °C`, r.tm === null ? 'hors domaine du calcul' : 'plus proche voisin'],
     ['Masse', r.masse === null ? '—' : `${nb(r.masse / 1000, 1)} kDa`, 'simple brin'],
@@ -255,8 +379,10 @@ function rendreAnalyse(r: ResultatAnalyse): void {
       (r.orfs.length > 25 ? `<p class="note">${nb(r.orfs.length)} cadres au total, les 25 plus longs affichés.</p>` : '')
     : '<p class="vide">Aucun cadre ouvert de la longueur demandée.</p>';
 
+  const doc = docActif();
   box.innerHTML =
-    `<div class="kpis">${kpis.map(([l, v, sub]) =>
+    `${doc ? alerteQualite(doc) : ''}
+     <div class="kpis">${kpis.map(([l, v, sub]) =>
       `<div class="kpi"><div class="klbl">${l}</div><div class="kval">${v}</div><div class="ksub">${sub}</div></div>`).join('')}</div>
      ${grapheGC(r)}
      <h3>Bases</h3><div class="tbl"><table><thead><tr><th>Code</th><th>Nombre</th><th>Part</th></tr></thead>
@@ -310,7 +436,11 @@ function rendreAmorces(r: ResultatAmorces): void {
   const avecSonde = r.paires.some((p) => p.sonde);
   const celluleSonde = (s?: Sonde) => s
     ? `<td class="mono">${ech(s.seq)}<br><span class="note">brin ${s.brin} · ${nb(s.debut)}..${nb(s.fin)}
-       · Tm ${nb(s.tm, 1)} °C · GC ${nb(s.gc, 0)} % · à ${nb(s.distanceAvant)} nt de F</span></td>`
+       · Tm ${nb(s.tm, 1)} °C · GC ${nb(s.gc, 0)} %<br>
+       ${s.collee === 'F'
+         ? `à ${nb(s.distanceAvant)} nt de F`
+         : `à ${nb(s.distanceArriere)} nt de R`}${
+         Math.min(s.distanceAvant, s.distanceArriere) === 0 ? ' (collée)' : ''}</span></td>`
     : '';
   box.innerHTML = `<p class="note">${nb(r.paires.length)} meilleures paires sur ${nb(r.pairesExaminees)} couples
     examinés${r.interrompu ? ', recherche interrompue — résultat partiel' : ''}${
@@ -341,6 +471,87 @@ export function rendre(): void {
   rendreMeta(doc);
   rendreSequence(doc);
 }
+
+/** Va à la prochaine base ambiguë : centre le chromatogramme dessus, la
+ *  sélectionne, et propose la base du pic le plus haut. Ne boucle pas toute
+ *  seule au début — sauter en arrière sans le dire ferait croire qu'on avance. */
+function allerAmbiguiteSuivante(doc: DocumentSeq): void {
+  const seq = sequenceCourante(doc);
+  const boite = $('#ambiguite');
+  const suivante = prochaineAmbiguite(seq, ambiguiteCourante);
+  if (suivante === -1) {
+    const reste = prochaineAmbiguite(seq, -1);
+    boite.hidden = false;
+    boite.innerHTML = reste === -1
+      ? '<p class="ok-vert">Aucune ambiguïté dans cette séquence.</p>'
+      : `<p class="note">Fin de la séquence atteinte. <button id="btn-ambiguite-debut">Reprendre au début</button></p>`;
+    ambiguiteCourante = -1;
+    if (reste !== -1) {
+      $('#btn-ambiguite-debut').addEventListener('click', () => allerAmbiguiteSuivante(doc));
+    }
+    return;
+  }
+  ambiguiteCourante = suivante;
+  const lettre = seq[suivante] as string;
+  const index = indexFichier(doc, suivante);
+
+  // Centrer la vue du chromatogramme sur la position, et l'y sélectionner.
+  if (doc.genre === 'ab1' && index >= 0) {
+    choisie = index;
+    etat.vue.premiere = Math.max(0, index - Math.floor(etat.vue.combien / 2));
+    rendreMeta(doc);
+  }
+
+  const pic = doc.genre === 'ab1' && doc.abif && index >= 0 ? picLePlusHaut(doc.abif, index) : null;
+  const restantes = seq.length - suivante;
+  boite.hidden = false;
+  boite.innerHTML =
+    `<div class="barre" style="margin:0">
+       <span class="quoi">Position <strong>${nb(suivante + 1)}</strong> de la séquence${
+         index >= 0 ? ` <span class="note">(base ${nb(index + 1)} du fichier)</span>` : ''} — lue
+         <strong class="b-N">${ech(lettre)}</strong>
+         ${IUPAC_LISIBLE(lettre)}</span>
+       ${pic
+         ? `<span class="note">pic le plus haut :
+              <strong class="b-${pic.base}">${pic.base}</strong>
+              ${pic.rapport === Infinity ? '(seul pic)' : `(${nb(pic.rapport, 1)}× le second)`}</span>`
+         : '<span class="note">pas de trace : aucune proposition</span>'}
+       <label class="champ">corriger en
+         <input type="text" id="ambiguite-lettre" maxlength="1" style="width:3.2rem;text-align:center"
+                value="${pic ? pic.base : ''}"></label>
+       <button id="btn-ambiguite-appliquer" class="primary">Appliquer</button>
+       <button id="btn-ambiguite-passer">Passer</button>
+       <span class="note">${nb(restantes)} bases après celle-ci</span>
+     </div>`;
+
+  $('#btn-ambiguite-passer').addEventListener('click', () => allerAmbiguiteSuivante(doc));
+  $('#btn-ambiguite-appliquer').addEventListener('click', () => {
+    const val = ($('#ambiguite-lettre') as HTMLInputElement).value.toUpperCase();
+    if (!/^[ACGTRYSWKMBDHVN]$/.test(val)) {
+      boite.insertAdjacentHTML('beforeend',
+        '<p class="err">Seule une lettre du code IUPAC est acceptée.</p>');
+      return;
+    }
+    if (doc.genre === 'ab1' && index >= 0) {
+      corrigerBase(doc, index, val);
+    } else {
+      // Sans chromatogramme, on réécrit la base dans la séquence elle-même.
+      const seqDuMoment = sequenceCourante(doc);
+      doc.edite = seqDuMoment.slice(0, suivante) + val + seqDuMoment.slice(suivante + 1);
+      doc.journalEdition.push(`position ${suivante + 1} : ${lettre} → ${val}`);
+      rendre();
+    }
+    // On recule d'un cran : la position corrigée n'est plus ambiguë, la
+    // recherche suivante repartira juste après elle.
+    ambiguiteCourante = suivante;
+    allerAmbiguiteSuivante(doc);
+  });
+}
+
+const IUPAC_LISIBLE = (lettre: string): string => {
+  const cls = IUPAC[lettre];
+  return cls && cls.length > 1 ? `<span class="note">(${cls.split('').join(' ou ')})</span>` : '';
+};
 
 /* ── Exports ─────────────────────────────────────────────────────────────── */
 
@@ -420,6 +631,9 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
     if (li?.dataset.i !== undefined) {
       etat.actif = Number(li.dataset.i);
       etat.vue.premiere = 0;
+      choisie = -1;
+      ambiguiteCourante = -1;
+      $('#ambiguite').hidden = true;
       etat.amorces = undefined;
       rendre();
     }
@@ -455,6 +669,59 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
     const doc = docActif();
     if (doc) rendreChromato(doc);
   });
+
+  // La ligne de bases : cliquer choisit, la palette corrige, le clavier va vite.
+  $('#bases-ligne').addEventListener('click', (e) => {
+    const cible = (e.target as HTMLElement).dataset.base;
+    const doc = docActif();
+    if (!doc || cible === undefined) return;
+    choisie = choisie === Number(cible) ? -1 : Number(cible);
+    rendreLigneBases(doc);
+    $('#bases-ligne').focus();
+  });
+  $('#palette').addEventListener('click', (e) => {
+    const lettre = (e.target as HTMLElement).dataset.lettre;
+    const doc = docActif();
+    if (!doc || lettre === undefined || choisie < 0) return;
+    corrigerBase(doc, choisie, lettre);
+  });
+  $('#bases-ligne').addEventListener('keydown', (e) => {
+    const doc = docActif();
+    if (!doc || doc.genre !== 'ab1') return;
+    const ev = e as KeyboardEvent;
+    const bases = sequenceSource(doc, false);
+    if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') {
+      ev.preventDefault();
+      const pas = ev.key === 'ArrowRight' ? 1 : -1;
+      choisie = Math.max(0, Math.min(bases.length - 1, (choisie < 0 ? etat.vue.premiere : choisie) + pas));
+      // Suivre la sélection si elle sort de la fenêtre affichée.
+      if (choisie < etat.vue.premiere) etat.vue.premiere = choisie;
+      if (choisie >= etat.vue.premiere + etat.vue.combien) {
+        etat.vue.premiere = choisie - etat.vue.combien + 1;
+      }
+      rendreMeta(doc);
+      return;
+    }
+    if (ev.key === 'Escape') { choisie = -1; rendreLigneBases(doc); return; }
+    const lettre = ev.key.toUpperCase();
+    if (choisie >= 0 && /^[ACGTRYSWKMBDHVN]$/.test(lettre)) {
+      ev.preventDefault();
+      corrigerBase(doc, choisie, lettre);
+    }
+  });
+
+  $('#btn-ambiguite').addEventListener('click', () => {
+    const doc = docActif();
+    if (doc) allerAmbiguiteSuivante(doc);
+  });
+
+  // Le bloc « sonde » s'éteint visuellement quand la case est décochée : on
+  // voit d'un coup d'œil si ces réglages comptent.
+  const majSonde = () => {
+    $('#bloc-sonde').classList.toggle('eteint', !($('#opt-sonde') as HTMLInputElement).checked);
+  };
+  $('#opt-sonde').addEventListener('change', majSonde);
+  majSonde();
 
   $('#btn-copier').addEventListener('click', async (e) => {
     const doc = docActif();
@@ -559,7 +826,8 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
       sonde: ($('#opt-sonde') as HTMLInputElement).checked,
       sondeTmMin: val('#sonde-tm-min'), sondeTmMax: val('#sonde-tm-max'),
       sondeTmOptimale: (val('#sonde-tm-min') + val('#sonde-tm-max')) / 2,
-      sondeLongMin: val('#sonde-lg-min'), sondeLongMax: val('#sonde-lg-max')
+      sondeLongMin: val('#sonde-lg-min'), sondeLongMax: val('#sonde-lg-max'),
+      sondeDistanceMax: val('#sonde-dist')
     };
     $('#resultats').innerHTML = '<p class="vide">Recherche en cours…</p>';
     const id = executeur.lancer<ResultatAmorces>('amorces/balayage', params, {

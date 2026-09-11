@@ -20,6 +20,13 @@ const cheminAb1 = join(dossier, 'lecture.ab1');
 writeFileSync(cheminFasta, FASTA);
 writeFileSync(cheminAb1, Buffer.from(chromatogrammeJouet(BASES)));
 
+// Un chromatogramme qui porte des ambiguïtés en son milieu, là où l'écrêtage
+// ne les emportera pas.
+const AMBIGU = BASES.split('');
+for (const p of [40, 55, 70]) AMBIGU[p] = 'N';
+const cheminAmbigu = join(dossier, 'ambigu.ab1');
+writeFileSync(cheminAmbigu, Buffer.from(chromatogrammeJouet(AMBIGU.join(''))));
+
 /** Le premier chargement se recharge une fois : le service worker de
  *  public/isolation.js doit prendre la main pour rétablir COOP/COEP. Toute
  *  interaction lancée avant ce rechargement est coupée par la navigation — ce
@@ -189,6 +196,79 @@ test('chaque analyse a sa section', async ({page}) => {
   await expect(page.locator('#p-analyse #btn-analyse')).toBeVisible();
   await expect(page.locator('#p-amorces #btn-amorces')).toBeVisible();
   await expect(page.locator('#p-amorces #opt-sonde')).toBeVisible();
+});
+
+test('les bases s’affichent et se corrigent sous le chromatogramme', async ({page}) => {
+  await page.setInputFiles('#fichiers', cheminAb1);
+  const ligne = page.locator('#bases-ligne .b');
+  await expect(ligne.first()).toBeVisible();
+  const combien = await ligne.count();
+  expect(combien).toBeGreaterThan(10);
+  await expect(page.locator('#palette')).toBeHidden();   // rien de sélectionné, rien à montrer
+
+  // Cliquer une base ouvre la palette, qui dit ce qu'on a sous les yeux.
+  const cible = ligne.nth(5);
+  const avant = (await cible.innerText()).trim();
+  await cible.click();
+  await expect(page.locator('#palette')).toBeVisible();
+  await expect(page.locator('#palette')).toContainText('du fichier');
+
+  // Corriger par la palette : la base change, et le fichier est dit modifié.
+  const remplacante = avant === 'G' ? 'C' : 'G';
+  await page.click(`#palette .lettre[data-lettre="${remplacante}"]`);
+  await expect(page.locator('#bases-ligne .b').nth(5)).toHaveText(remplacante);
+  await expect(page.locator('#liste .pastille.warn')).toHaveText('modifié');
+  await expect(page.locator('#bases-ligne .b.edite')).toHaveCount(1);
+
+  // Recliquer la base la désélectionne : la palette se referme vraiment.
+  await page.locator('#bases-ligne .b').nth(5).click();
+  await expect(page.locator('#palette')).toBeHidden();
+
+  // Et rétablir la rend au fichier.
+  await page.locator('#bases-ligne .b').nth(5).click();
+  await page.click('#palette [data-lettre="__annuler"]');
+  await expect(page.locator('#bases-ligne .b').nth(5)).toHaveText(avant);
+  await expect(page.locator('#bases-ligne .b.edite')).toHaveCount(0);
+});
+
+test('la prochaine ambiguïté se trouve, se propose et se corrige', async ({page}) => {
+  await page.setInputFiles('#fichiers', cheminAmbigu);
+
+  // L'anomalie est annoncée en rouge avant même qu'on la cherche.
+  await expect(page.locator('#alerte-sequence .alerte')).toContainText('ambiguës');
+
+  await page.click('#btn-ambiguite');
+  const boite = page.locator('#ambiguite');
+  await expect(boite).toContainText('de la séquence');
+  await expect(boite).toContainText('base');           // le repère du fichier aussi
+  await expect(boite).toContainText('pic le plus haut');
+
+  // La lettre proposée est celle du pic dominant, pré-remplie.
+  const propose = await page.inputValue('#ambiguite-lettre');
+  expect(propose).toMatch(/^[ACGT]$/);
+
+  const ambiguitesAvant = await page.locator('#stats .kpi .rouge').first().innerText();
+  await page.click('#btn-ambiguite-appliquer');
+  // Une ambiguïté de moins, et la suivante est déjà proposée.
+  await expect(page.locator('#stats .kpi .rouge').first()).not.toHaveText(ambiguitesAvant);
+  await expect(boite).toContainText('pic le plus haut');
+
+  // Une lettre impossible est refusée, pas interprétée.
+  await page.fill('#ambiguite-lettre', 'Z');
+  await page.click('#btn-ambiguite-appliquer');
+  await expect(boite.locator('.err')).toContainText('IUPAC');
+});
+
+test('les réglages d’amorces sont rangés, la sonde s’éteint quand on ne la veut pas', async ({page}) => {
+  await page.setInputFiles('#fichiers', cheminFasta);
+  await expect(page.locator('#p-amorces fieldset')).toHaveCount(2);
+  await expect(page.locator('#p-amorces legend').first()).toHaveText('Amorces');
+  await expect(page.locator('#bloc-sonde')).toHaveClass(/eteint/);
+  await page.check('#opt-sonde');
+  await expect(page.locator('#bloc-sonde')).not.toHaveClass(/eteint/);
+  await expect(page.locator('#sonde-dist')).toHaveValue('1');
+  // La phrase explicative a été retirée : elle n'a pas à revenir.
+  await expect(page.locator('#p-amorces')).not.toContainText('fluorophore');
 });
 
 test('rien ne sort du poste', async ({page}) => {

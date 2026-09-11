@@ -205,3 +205,49 @@ export function ecreterMott(qualites: readonly number[], seuil = 0.05): Ecretage
     qualiteMoyenne: qualiteMoyenne(qualites, debut, fin)
   };
 }
+
+/** Hauteur des quatre traces à la position d'une base, et la base du pic le
+ *  plus haut.
+ *
+ *  C'est ce qu'un opérateur regarde devant une ambiguïté : le logiciel du
+ *  séquenceur a écrit N parce qu'il hésitait, mais les pics, eux, disent
+ *  souvent lequel domine. On rend aussi le rapport au second pic : à 1,2 le
+ *  choix est douteux, à 5 il ne l'est pas, et c'est à l'humain de trancher. */
+export interface Pic {
+  readonly base: 'A' | 'C' | 'G' | 'T';
+  readonly hauteurs: Readonly<Record<'A' | 'C' | 'G' | 'T', number>>;
+  /** Hauteur du plus haut divisée par celle du deuxième. Infini si le second
+   *  est nul, 1 si les deux sont à égalité. */
+  readonly rapport: number;
+}
+
+export function picLePlusHaut(lecture: LectureAbif, indexBase: number): Pic | null {
+  const x = lecture.pics[indexBase];
+  if (x === undefined) return null;
+  const hauteurs = {A: 0, C: 0, G: 0, T: 0};
+  let trouve = false;
+  for (const base of ['A', 'C', 'G', 'T'] as const) {
+    const trace = lecture.traces[base];
+    if (!trace.length) continue;
+    trouve = true;
+    // Le pic n'est pas toujours exactement sur l'échantillon annoncé : on
+    // regarde la fenêtre immédiate plutôt qu'un point isolé.
+    let maxi = 0;
+    for (let d = -2; d <= 2; d++) {
+      const v = trace[x + d];
+      if (v !== undefined && v > maxi) maxi = v;
+    }
+    hauteurs[base] = maxi;
+  }
+  if (!trouve) return null;
+  const classees = (['A', 'C', 'G', 'T'] as const)
+    .map((b) => [b, hauteurs[b]] as const)
+    .sort((a, b) => b[1] - a[1]);
+  const premier = classees[0] as readonly ['A' | 'C' | 'G' | 'T', number];
+  const second = classees[1] as readonly ['A' | 'C' | 'G' | 'T', number];
+  return {
+    base: premier[0],
+    hauteurs,
+    rapport: second[1] > 0 ? premier[1] / second[1] : (premier[1] > 0 ? Infinity : 1)
+  };
+}

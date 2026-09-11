@@ -49,6 +49,11 @@
         <label class="case"><input type="checkbox" id="voir-ecrete" checked> Marquer l’écrêtage</label>
       </div>
       <canvas id="chromato" height="220"></canvas>
+      <div id="bases-ligne" class="bases" tabindex="0"
+           aria-label="Bases appelées, cliquez pour corriger"></div>
+      <div id="palette" class="palette" hidden></div>
+      <p class="note">Cliquez une base pour la corriger, ou tapez directement A, C, G, T, N.
+        Les flèches ← → passent à la voisine. Les bases corrigées à la main sont soulignées.</p>
     </div>
   </section>
 
@@ -62,7 +67,12 @@
       <label class="case"><input type="checkbox" id="opt-ecreter" checked> Écrêter par la qualité (.ab1)</label>
     </div>
     <div id="stats" class="kpis"></div>
+    <div id="alerte-sequence"></div>
     <div id="seqvue" class="seqvue"></div>
+    <div class="barre">
+      <button id="btn-ambiguite">Prochaine ambiguïté ›</button>
+    </div>
+    <div id="ambiguite" class="ambiguite" hidden></div>
     <div class="barre">
       <button id="btn-copier">Copier</button>
       <button id="btn-fasta">Enregistrer le .fas</button>
@@ -98,30 +108,48 @@
 
   <section id="p-amorces" hidden>
     <h2>Recherche d’amorces</h2>
-    <div class="barre" style="margin-top:0">
+    <div class="reglages">
+      <fieldset>
+        <legend>Amorces</legend>
+        <div class="reglage">
+          <span class="quoi">Température de fusion</span>
+          <input type="number" id="tm-min" value="57" step="1"><span class="tiret">–</span>
+          <input type="number" id="tm-max" value="63" step="1"><span class="unite">°C</span>
+        </div>
+        <div class="reglage">
+          <span class="quoi">Longueur</span>
+          <input type="number" id="lg-min" value="18" min="10" step="1"><span class="tiret">–</span>
+          <input type="number" id="lg-max" value="25" min="12" step="1"><span class="unite">nt</span>
+        </div>
+        <div class="reglage">
+          <span class="quoi">Amplicon</span>
+          <input type="number" id="amp-min" value="100" min="50" step="10"><span class="tiret">–</span>
+          <input type="number" id="amp-max" value="800" min="60" step="10"><span class="unite">nt</span>
+        </div>
+      </fieldset>
+
+      <fieldset id="bloc-sonde" class="eteint">
+        <legend><label class="case"><input type="checkbox" id="opt-sonde"> Sonde (qPCR)</label></legend>
+        <div class="reglage">
+          <span class="quoi">Température de fusion</span>
+          <input type="number" id="sonde-tm-min" value="67" step="1"><span class="tiret">–</span>
+          <input type="number" id="sonde-tm-max" value="73" step="1"><span class="unite">°C</span>
+        </div>
+        <div class="reglage">
+          <span class="quoi">Longueur</span>
+          <input type="number" id="sonde-lg-min" value="20" min="12" step="1"><span class="tiret">–</span>
+          <input type="number" id="sonde-lg-max" value="30" min="15" step="1"><span class="unite">nt</span>
+        </div>
+        <div class="reglage">
+          <span class="quoi">Écart maximal à F ou R</span>
+          <input type="number" id="sonde-dist" value="1" min="0" max="200" step="1">
+          <span class="unite" style="grid-column:span 2">nt (0 = collée)</span>
+        </div>
+      </fieldset>
+    </div>
+    <div class="barre">
       <button id="btn-amorces" class="primary">Chercher des amorces</button>
-      <span class="champ">amplicon
-        <input type="number" id="amp-min" value="100" min="50" step="10"> –
-        <input type="number" id="amp-max" value="800" min="60" step="10"> nt</span>
-      <span class="champ">Tm amorces
-        <input type="number" id="tm-min" value="57" step="1"> –
-        <input type="number" id="tm-max" value="63" step="1"> °C</span>
-      <span class="champ">longueur
-        <input type="number" id="lg-min" value="18" min="10" step="1"> –
-        <input type="number" id="lg-max" value="25" min="12" step="1"> nt</span>
     </div>
-    <div class="options" style="margin-top:.8rem">
-      <label class="case"><input type="checkbox" id="opt-sonde"> Chercher aussi une sonde (qPCR)</label>
-      <span class="champ">Tm sonde
-        <input type="number" id="sonde-tm-min" value="67" step="1"> –
-        <input type="number" id="sonde-tm-max" value="73" step="1"> °C</span>
-      <span class="champ">longueur sonde
-        <input type="number" id="sonde-lg-min" value="20" min="12" step="1"> –
-        <input type="number" id="sonde-lg-max" value="30" min="15" step="1"> nt</span>
-    </div>
-    <p class="note">Une sonde d’hydrolyse fond 8 à 10 °C plus haut que ses amorces, ne commence
-      jamais par un G (il éteindrait le fluorophore) et se place sur le brin le plus riche en C.
-      Une paire sans sonde exploitable est écartée quand la case est cochée.</p>
     <div id="resultats"></div>
   </section>
 
