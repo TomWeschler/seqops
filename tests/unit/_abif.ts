@@ -102,7 +102,15 @@ export function fabriquerAbif(entrees: EntreeFabriquee[], version = 101): ArrayB
 
 /** Un chromatogramme jouet : la séquence donnée, un pic gaussien par base,
  *  des qualités choisies (médiocres aux extrémités par défaut). */
-export function chromatogrammeJouet(bases: string, qualites?: number[]): ArrayBuffer {
+interface Jouet {
+  pics: number[];
+  qualites: number[];
+  traces: Record<string, number[]>;
+}
+
+/** Les tableaux du chromatogramme jouet, avant écriture : pics, qualités et
+ *  quatre traces. Exposé pour que les épreuves puissent les retoucher. */
+export function lireJouet(bases: string, qualites?: number[]): Jouet {
   const pas = 12;
   const n = bases.length;
   const q = qualites ?? bases.split('').map((_, i) => (i < 15 || i > n - 15 ? 8 : 55));
@@ -140,6 +148,11 @@ export function chromatogrammeJouet(bases: string, qualites?: number[]): ArrayBu
     poser(traces['A'] as number[], centre, 1000, facteur);
     poser(traces['G'] as number[], centre, 850, facteur);
   });
+  return {pics, qualites: q, traces};
+}
+
+export function chromatogrammeJouet(bases: string, qualites?: number[]): ArrayBuffer {
+  const {pics, qualites: q, traces} = lireJouet(bases, qualites);
   // FWO_ dit dans quel ordre les quatre traces sont rangées : ici G, A, T, C,
   // l'ordre habituel des séquenceurs — c'est justement ce qu'il ne faut pas
   // supposer identique à A, C, G, T.
@@ -153,5 +166,36 @@ export function chromatogrammeJouet(bases: string, qualites?: number[]): ArrayBu
     entreePString('MODL', 1, '3730xl'),
     entreeDate('RUND', 1, 2026, 9, 10),
     ...ordre.split('').map((b, i) => entreeCourts('DATA', 9 + i, traces[b] as number[]))
+  ]);
+}
+
+/** Un chromatogramme jouet porteur d'hétérozygotes : aux positions demandées,
+ *  une seconde trace culmine au même endroit que la première, à la hauteur
+ *  relative donnée. C'est ce que montre un échantillon hétérozygote — et ce
+ *  que l'appel de bases du séquenceur, lui, ne dit pas. */
+export function chromatogrammeAvecHeterozygotes(
+  bases: string, positions: number[], part = 0.6
+): ArrayBuffer {
+  const lecture = lireJouet(bases);
+  for (const p of positions) {
+    const x = lecture.pics[p];
+    if (x === undefined) continue;
+    const appelee = bases[p] as string;
+    const seconde = appelee === 'A' ? 'G' : 'A';
+    const sommet = lecture.traces[appelee]?.[x] ?? 1000;
+    const cible = lecture.traces[seconde] as number[];
+    for (let d = -5; d <= 5; d++) {
+      if (x + d >= 0 && x + d < cible.length) {
+        cible[x + d] = Math.max(cible[x + d] ?? 0, Math.round(sommet * part * Math.exp(-(d * d) / 6)));
+      }
+    }
+  }
+  const ordre = 'GATC';
+  return fabriquerAbif([
+    entreeChar('FWO_', 1, ordre),
+    entreeChar('PBAS', 1, bases),
+    entreeOctets('PCON', 1, lecture.qualites),
+    entreeCourts('PLOC', 1, lecture.pics),
+    ...ordre.split('').map((b, i) => entreeCourts('DATA', 9 + i, lecture.traces[b] as number[]))
   ]);
 }

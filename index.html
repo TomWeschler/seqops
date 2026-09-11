@@ -58,6 +58,11 @@
     </div>
     <div class="barre">
       <button id="btn-ambiguite">Prochaine ambiguïté ›</button>
+      <button id="btn-doubles">Chercher les pics doubles</button>
+      <span class="champ">second pic ≥
+        <input type="number" id="seuil-double" value="33" min="5" max="95" step="1"> %</span>
+      <button id="btn-double-suivant" hidden>Prochain pic double ›</button>
+      <span class="note" id="bilan-doubles"></span>
     </div>
     <div id="ambiguite" class="ambiguite" hidden></div>
   </section>

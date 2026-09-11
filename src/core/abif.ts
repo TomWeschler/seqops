@@ -189,21 +189,88 @@ export interface Ecretage {
  *  garde le segment de somme maximale. Elle ne coupe pas à la première base
  *  douteuse, elle cherche la meilleure fenêtre — c'est ce qui la rend robuste
  *  aux creux isolés au milieu d'une bonne lecture. */
-export function ecreterMott(qualites: readonly number[], seuil = 0.05): Ecretage {
-  const n = qualites.length;
-  if (!n) return {debut: 0, fin: 0, retireDebut: 0, retireFin: 0, qualiteMoyenne: 0};
+/** Segment de somme maximale (Kadane) : le cœur de l'écrêtage de Mott. Donné à
+ *  des scores positifs pour ce qu'on garde et négatifs pour ce qu'on jette, il
+ *  trouve la meilleure fenêtre sans couper au premier accident. */
+export function meilleurSegment(scores: readonly number[]): {debut: number; fin: number; somme: number} {
   let somme = 0, meilleure = -Infinity, debutCourant = 0, debut = 0, fin = 0;
-  for (let i = 0; i < n; i++) {
-    const perreur = Math.pow(10, -(qualites[i] ?? 0) / 10);
-    somme += seuil - perreur;
+  for (let i = 0; i < scores.length; i++) {
+    somme += scores[i] ?? 0;
     if (somme < 0) { somme = 0; debutCourant = i + 1; }
     else if (somme > meilleure) { meilleure = somme; debut = debutCourant; fin = i + 1; }
   }
-  if (meilleure <= 0) return {debut: 0, fin: 0, retireDebut: 0, retireFin: n, qualiteMoyenne: 0};
+  return meilleure > 0 ? {debut, fin, somme: meilleure} : {debut: 0, fin: 0, somme: 0};
+}
+
+export function ecreterMott(qualites: readonly number[], seuil = 0.05): Ecretage {
+  const n = qualites.length;
+  if (!n) return {debut: 0, fin: 0, retireDebut: 0, retireFin: 0, qualiteMoyenne: 0};
+  const scores = qualites.map((q) => seuil - Math.pow(10, -(q ?? 0) / 10));
+  const {debut, fin} = meilleurSegment(scores);
   return {
     debut, fin, retireDebut: debut, retireFin: n - fin,
     qualiteMoyenne: qualiteMoyenne(qualites, debut, fin)
   };
+}
+
+
+/* ── Quand le fichier ne porte aucune qualité ─────────────────────────────
+   Le .ab1 de référence n'a pas d'entrée PCON : impossible d'écrêter par la
+   qualité, et impossible de savoir où la lecture cesse d'être lisible. La
+   trace, elle, le dit : sur ce fichier, la hauteur médiane des pics passe de
+   500 à 2 après la base 830, et la pureté (part du pic appelé dans la somme
+   des quatre) tombe de 0,99 à 0,50. On reconstruit donc une qualité à partir
+   de ces deux mesures. */
+
+export interface QualiteTrace {
+  /** Part du pic appelé dans la somme des quatre, base par base : 1 = un seul
+   *  pic net, 0,25 = quatre pics indiscernables. */
+  readonly purete: readonly number[];
+  /** Hauteur du pic appelé, base par base. */
+  readonly hauteur: readonly number[];
+  readonly hauteurMediane: number;
+}
+
+export function qualiteParTrace(lecture: LectureAbif): QualiteTrace {
+  const bases = ['A', 'C', 'G', 'T'] as const;
+  const purete: number[] = [];
+  const hauteur: number[] = [];
+  for (let i = 0; i < lecture.bases.length; i++) {
+    const pic = picLePlusHaut(lecture, i);
+    if (!pic) { purete.push(0); hauteur.push(0); continue; }
+    const total = bases.reduce((s, b) => s + pic.hauteurs[b], 0);
+    const appelee = (lecture.bases[i] ?? 'N').toUpperCase();
+    const h = (bases as readonly string[]).includes(appelee)
+      ? pic.hauteurs[appelee as 'A']
+      : Math.max(...bases.map((b) => pic.hauteurs[b]));
+    hauteur.push(h);
+    purete.push(total > 0 ? h / total : 0);
+  }
+  const triees = [...hauteur].sort((a, b) => a - b);
+  return {purete, hauteur, hauteurMediane: triees[Math.floor(triees.length / 2)] ?? 0};
+}
+
+export interface OptionsZone {
+  /** Pureté minimale d'une base lisible. */
+  pureteMin?: number;
+  /** Hauteur minimale, en fraction de la hauteur médiane de la lecture. */
+  partHauteurMin?: number;
+}
+
+/** La portion de la lecture où le signal vaut quelque chose, déduite de la
+ *  trace seule. Sert d'écrêtage de secours quand le fichier n'a pas de
+ *  qualités, et borne la recherche des pics doubles : sans elle, la queue de
+ *  lecture en fabrique des centaines. */
+export function zoneExploitable(lecture: LectureAbif, options: OptionsZone = {}): {debut: number; fin: number} {
+  const pureteMin = options.pureteMin ?? 0.7;
+  const partHauteurMin = options.partHauteurMin ?? 0.1;
+  const q = qualiteParTrace(lecture);
+  if (!q.hauteur.length || q.hauteurMediane <= 0) return {debut: 0, fin: 0};
+  const plancher = q.hauteurMediane * partHauteurMin;
+  const scores = q.purete.map((p, i) =>
+    (q.hauteur[i] ?? 0) >= plancher && p >= pureteMin ? 1 : -1);
+  const {debut, fin} = meilleurSegment(scores);
+  return {debut, fin};
 }
 
 /** Hauteur des quatre traces à la position d'une base, et la base du pic le
@@ -250,4 +317,130 @@ export function picLePlusHaut(lecture: LectureAbif, indexBase: number): Pic | nu
     hauteurs,
     rapport: second[1] > 0 ? premier[1] / second[1] : (premier[1] > 0 ? Infinity : 1)
   };
+}
+
+/* ── Pics secondaires : les hétérozygotes que l'appeleur a tranchés ────────
+   Le logiciel du séquenceur écrit une base par position, même quand deux pics
+   se superposent. En génotypage, c'est précisément cette position-là qui
+   compte : un hétérozygote y apparaît comme deux pics de hauteur voisine, et
+   le fichier n'en garde aucune trace. On les retrouve en relisant les traces.
+
+   Deux pièges que la détection doit éviter, sinon elle noie l'opérateur sous
+   les fausses alertes :
+     — le BRUIT de fond dans les zones faibles, où tout ressemble à tout ;
+     — l'ÉPAULEMENT du pic voisin, qui déborde sur la position sans être un
+       second allèle. Un vrai second pic culmine AU MÊME endroit que le
+       premier ; un épaulement, lui, monte ou descend encore. */
+
+export interface PicDouble {
+  /** Index de la base, à partir de 0. */
+  readonly index: number;
+  /** Base appelée par le séquenceur. */
+  readonly appelee: string;
+  /** Base du second pic. */
+  readonly seconde: 'A' | 'C' | 'G' | 'T';
+  readonly hauteurAppelee: number;
+  readonly hauteurSeconde: number;
+  /** Hauteur du second rapportée au premier, de 0 à 1. */
+  readonly rapport: number;
+  /** Le code IUPAC qui décrit les deux bases ensemble. */
+  readonly iupac: string;
+  /** Vrai quand le second pic dépasse celui de la base appelée : ce n'est plus
+   *  un hétérozygote équilibré, c'est un appel à vérifier. */
+  readonly appelDouteux: boolean;
+}
+
+const CODE_IUPAC: Record<string, string> = {
+  AG: 'R', CT: 'Y', CG: 'S', AT: 'W', GT: 'K', AC: 'M'
+};
+
+export interface OptionsPicsDoubles {
+  /** Hauteur relative à partir de laquelle un second pic compte. 0,25 par
+   *  défaut : en dessous, on ramasse surtout du bruit et de la diaphonie. */
+  seuil?: number;
+  /** Ne rien signaler dans les zones où le signal s'effondre : le pic principal
+   *  doit atteindre cette fraction de la hauteur médiane de la lecture. */
+  seuilSignal?: number;
+  debut?: number;
+  fin?: number;
+}
+
+export function picsDoubles(lecture: LectureAbif, options: OptionsPicsDoubles = {}): PicDouble[] {
+  const seuil = options.seuil ?? 0.25;
+  const seuilSignal = options.seuilSignal ?? 0.15;
+  // Par défaut, on ne cherche que là où le signal vaut quelque chose : la queue
+  // d'une lecture Sanger fabrique des « hétérozygotes » par centaines.
+  const zone = options.debut === undefined && options.fin === undefined
+    ? zoneExploitable(lecture)
+    : {debut: options.debut ?? 0, fin: options.fin ?? lecture.bases.length};
+  const debut = Math.max(0, zone.debut);
+  const fin = Math.min(lecture.bases.length, zone.fin);
+  const bases = ['A', 'C', 'G', 'T'] as const;
+  if (!lecture.pics.length) return [];
+
+  // Hauteur médiane du pic appelé sur la plage : l'échelle de référence.
+  const hauteurs: number[] = [];
+  for (let i = debut; i < fin; i++) {
+    const pic = picLePlusHaut(lecture, i);
+    if (pic) hauteurs.push(Math.max(...bases.map((b) => pic.hauteurs[b])));
+  }
+  if (!hauteurs.length) return [];
+  const triees = [...hauteurs].sort((a, b) => a - b);
+  const mediane = triees[Math.floor(triees.length / 2)] as number;
+  const plancher = mediane * seuilSignal;
+
+  const trouves: PicDouble[] = [];
+  for (let i = debut; i < fin; i++) {
+    const x = lecture.pics[i];
+    const pic = picLePlusHaut(lecture, i);
+    if (x === undefined || !pic) continue;
+    const appelee = (lecture.bases[i] ?? 'N').toUpperCase();
+
+    const principale = (bases as readonly string[]).includes(appelee)
+      ? pic.hauteurs[appelee as 'A']
+      : Math.max(...bases.map((b) => pic.hauteurs[b]));
+    if (principale < plancher || principale <= 0) continue;
+
+    let seconde: 'A' | 'C' | 'G' | 'T' | null = null;
+    let hauteurSeconde = 0;
+    for (const b of bases) {
+      if (b === appelee) continue;
+      const h = pic.hauteurs[b];
+      if (h > hauteurSeconde) { hauteurSeconde = h; seconde = b; }
+    }
+    if (!seconde) continue;
+    const rapport = hauteurSeconde / principale;
+    if (rapport < seuil) continue;
+
+    // Deux filtres contre les faux hétérozygotes, appris sur un vrai fichier :
+    //
+    // 1. L'ÉPAULEMENT. La trace du second monte ou descend encore au lieu de
+    //    culminer ici ; un vrai second allèle a son sommet au même endroit.
+    const trace = lecture.traces[seconde];
+    const ici = trace[x] ?? 0;
+    if (ici < (trace[x - 3] ?? 0) || ici < (trace[x + 3] ?? 0)) continue;
+
+    // 2. LA TRAÎNE D'UN VOISIN DE MÊME BASE. Dans une suite AAA, la trace de A
+    //    ne redescend pas entre les pics : au milieu, elle reste haute et
+    //    ressemble à un second pic. Un vrai second pic, lui, sort d'un creux.
+    //    On exige donc qu'il domine nettement les creux qui l'encadrent.
+    const precedent = lecture.pics[i - 1];
+    const suivant = lecture.pics[i + 1];
+    const creux = (autre: number | undefined) => {
+      if (autre === undefined) return 0;
+      const milieu = Math.round((x + autre) / 2);
+      return trace[milieu] ?? 0;
+    };
+    const plusHautCreux = Math.max(creux(precedent), creux(suivant));
+    if (ici < plusHautCreux * 1.5) continue;
+
+    const paire = [appelee, seconde].sort().join('');
+    trouves.push({
+      index: i, appelee, seconde,
+      hauteurAppelee: principale, hauteurSeconde, rapport,
+      iupac: CODE_IUPAC[paire] ?? 'N',
+      appelDouteux: rapport > 1
+    });
+  }
+  return trouves;
 }

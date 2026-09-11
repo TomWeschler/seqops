@@ -8,7 +8,7 @@ import type {Page} from '@playwright/test';
 import {mkdtempSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {chromatogrammeJouet} from '../unit/_abif.js';
+import {chromatogrammeAvecHeterozygotes, chromatogrammeJouet} from '../unit/_abif.js';
 
 const BASES =
   'ACGTACGTGGCCAATTCCGGATCGATCGATTACAGGCATCAGCATCAGCATCGACTACGATCAGCATCAGCATCAGCATCAGCTACGATCAGCATCAGC';
@@ -26,6 +26,12 @@ const AMBIGU = BASES.split('');
 for (const p of [40, 55, 70]) AMBIGU[p] = 'N';
 const cheminAmbigu = join(dossier, 'ambigu.ab1');
 writeFileSync(cheminAmbigu, Buffer.from(chromatogrammeJouet(AMBIGU.join(''))));
+
+// Un chromatogramme porteur de vrais hétérozygotes : une seconde trace qui
+// culmine au même endroit que la première, comme sur un échantillon
+// hétérozygote réel.
+const cheminHetero = join(dossier, 'hetero.ab1');
+writeFileSync(cheminHetero, Buffer.from(chromatogrammeAvecHeterozygotes(BASES, [30, 45], 0.6)));
 
 /** Le premier chargement se recharge une fois : le service worker de
  *  public/isolation.js doit prendre la main pour rétablir COOP/COEP. Toute
@@ -385,6 +391,36 @@ test('la prochaine ambiguïté se trouve, se propose et se corrige', async ({pag
   await page.fill('#ambiguite-lettre', 'Z');
   await page.click('#btn-ambiguite-appliquer');
   await expect(boite.locator('.err')).toContainText('IUPAC');
+});
+
+test('les pics doubles se cherchent, se parcourent et se corrigent', async ({page}) => {
+  await page.setInputFiles('#fichiers', cheminHetero);
+  await page.click('#btn-doubles');
+  await expect(page.locator('#bilan-doubles')).toContainText('à deux pics');
+  await expect(page.locator('#bilan-doubles')).toHaveClass(/rouge/);
+  await expect(page.locator('#bases-ligne .b.double')).not.toHaveCount(0);
+
+  await page.click('#btn-double-suivant');
+  const boite = page.locator('#ambiguite');
+  await expect(boite).toContainText('second pic');
+  // Le code proposé décrit LES DEUX bases, pas l'une des deux.
+  expect(await page.inputValue('#double-lettre')).toMatch(/^[RYSWKM]$/);
+
+  await page.click('#btn-double-appliquer');
+  await expect(page.locator('#liste .pastille.warn')).toHaveText('modifié');
+  // La séquence porte maintenant une ambiguïté de plus, annoncée en rouge.
+  await expect(page.locator('#alerte-sequence .alerte')).toContainText('ambigu');
+});
+
+test('un seuil plus exigeant trouve moins de pics doubles', async ({page}) => {
+  await page.setInputFiles('#fichiers', cheminHetero);
+  await page.click('#btn-doubles');
+  const large = await page.locator('#bilan-doubles').innerText();
+  await page.fill('#seuil-double', '90');
+  await page.click('#btn-doubles');
+  const strict = await page.locator('#bilan-doubles').innerText();
+  expect(strict).not.toEqual(large);
+  await expect(page.locator('#bilan-doubles')).toContainText('Aucun second pic');
 });
 
 test('les réglages d’amorces sont rangés, la sonde s’éteint quand on ne la veut pas', async ({page}) => {

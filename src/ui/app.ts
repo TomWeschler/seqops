@@ -3,8 +3,9 @@
  *  L'état tient dans une seule structure et chaque action la remplace : c'est
  *  ce qui permet d'afficher un avant/après honnête et de tout journaliser. */
 
-import {ecreterMott, lireAbif, picLePlusHaut, ErreurAbif} from '../core/abif.js';
-import type {Ecretage, LectureAbif} from '../core/abif.js';
+import {ecreterMott, lireAbif, picLePlusHaut, picsDoubles, zoneExploitable, ErreurAbif}
+  from '../core/abif.js';
+import type {Ecretage, LectureAbif, PicDouble} from '../core/abif.js';
 import {ecrireFasta, lireFasta, remplacerSegment, remplacerSequence} from '../core/fasta.js';
 import type {Enregistrement} from '../core/fasta.js';
 import {composition, corriger, prochaineAmbiguite, IUPAC} from '../core/sequence.js';
@@ -25,6 +26,12 @@ export interface DocumentSeq {
   readonly genre: 'ab1' | 'fas';
   readonly abif?: LectureAbif;
   readonly ecretage?: Ecretage;
+  /** D'où vient l'écrêtage : des qualités PHRED du fichier, ou — à défaut —
+   *  du signal lui-même. Ce n'est pas la même confiance, il faut le dire. */
+  readonly sourceEcretage?: 'qualite' | 'signal';
+  /** Positions à deux pics, une fois cherchées. */
+  doubles?: readonly PicDouble[];
+  seuilDouble: number;
   enrs: Enregistrement[];
   enrIndex: number;
   /** Séquence modifiée à la main ; absente tant qu'on n'a rien changé. */
@@ -49,6 +56,8 @@ const etat: Etat = {docs: [], actif: -1, vue: {premiere: 0, combien: 40}};
 let choisie = -1;
 /** Position, dans la séquence corrigée, de la dernière ambiguïté visitée. */
 let ambiguiteCourante = -1;
+/** Rang du dernier pic double visité, dans la liste du document actif. */
+let doubleCourant = -1;
 let executeur: Executeur;
 
 /* ── Chargement ──────────────────────────────────────────────────────────── */
@@ -59,15 +68,34 @@ export async function chargerFichier(f: File): Promise<DocumentSeq> {
   const nom = f.name;
   if (/\.ab1$/i.test(nom)) {
     const abif = lireAbif(await f.arrayBuffer());
-    const ecretage = abif.qualites.length ? ecreterMott(abif.qualites) : undefined;
-    return {id: identifiant(), nom, genre: 'ab1', abif, ecretage, enrs: [], enrIndex: 0,
-            editionsBases: new Map(), journalEdition: []};
+    // Avec des qualités PHRED, l'écrêtage de Mott. Sans — le cas de bien des
+    // fichiers de 3730 —, on déduit la zone exploitable de la trace : mieux
+    // vaut un écrêtage fondé sur le signal que pas d'écrêtage du tout.
+    let ecretage: Ecretage | undefined;
+    let sourceEcretage: 'qualite' | 'signal' | undefined;
+    if (abif.qualites.length) {
+      ecretage = ecreterMott(abif.qualites);
+      sourceEcretage = 'qualite';
+    } else if (abif.pics.length) {
+      const z = zoneExploitable(abif);
+      if (z.fin > z.debut) {
+        ecretage = {
+          debut: z.debut, fin: z.fin,
+          retireDebut: z.debut, retireFin: abif.bases.length - z.fin,
+          qualiteMoyenne: 0
+        };
+        sourceEcretage = 'signal';
+      }
+    }
+    return {id: identifiant(), nom, genre: 'ab1', abif, ecretage, sourceEcretage,
+            enrs: [], enrIndex: 0, editionsBases: new Map(), journalEdition: [],
+            seuilDouble: 0.33};
   }
   const texte = await f.text();
   const enrs = lireFasta(texte);
   if (!enrs.length) throw new Error(`${nom} ne contient aucune séquence lisible.`);
   return {id: identifiant(), nom, genre: 'fas', enrs, enrIndex: 0,
-          editionsBases: new Map(), journalEdition: []};
+          editionsBases: new Map(), journalEdition: [], seuilDouble: 0.33};
 }
 
 async function accepter(fichiers: FileList | File[]): Promise<void> {
@@ -170,7 +198,10 @@ function rendreMeta(doc: DocumentSeq): void {
                 a.qualites.length ? 'PHRED, lecture entière' : 'ce fichier ne porte pas de qualités']);
     if (doc.ecretage) {
       cases.push(['Après écrêtage', nb(doc.ecretage.fin - doc.ecretage.debut),
-                  `−${doc.ecretage.retireDebut} / −${doc.ecretage.retireFin} bases, Q̄ ${nb(doc.ecretage.qualiteMoyenne, 1)}`]);
+                  `−${doc.ecretage.retireDebut} / −${doc.ecretage.retireFin} bases · ` +
+                  (doc.sourceEcretage === 'signal'
+                    ? 'd’après le signal, faute de qualités'
+                    : `Q̄ ${nb(doc.ecretage.qualiteMoyenne, 1)}`)]);
     }
     cases.push(['Date de course', ech(a.date || '—'), `ABIF v${a.version}`]);
   } else {
@@ -183,14 +214,16 @@ function rendreMeta(doc: DocumentSeq): void {
     `<div class="kpi"><div class="klbl">${l}</div><div class="kval">${v}</div><div class="ksub">${s}</div></div>`).join('');
 
   const caseEcretage = $('#opt-ecreter') as HTMLInputElement;
-  const sansQualites = doc.genre === 'ab1' && (doc.abif?.qualites.length ?? 0) === 0;
-  caseEcretage.disabled = sansQualites;
+  const sansEcretage = doc.genre === 'ab1' && !doc.ecretage;
+  caseEcretage.disabled = sansEcretage;
   const etiquette = caseEcretage.closest('label');
   if (etiquette) {
-    etiquette.title = sansQualites
-      ? 'Ce fichier ne porte pas de qualités PHRED : il n’y a rien à écrêter.'
-      : '';
-    etiquette.classList.toggle('eteint', sansQualites);
+    etiquette.title = sansEcretage
+      ? 'Ni qualités PHRED, ni signal exploitable : il n’y a rien à écrêter.'
+      : doc.sourceEcretage === 'signal'
+        ? 'Ce fichier ne porte pas de qualités : l’écrêtage est déduit du signal.'
+        : '';
+    etiquette.classList.toggle('eteint', sansEcretage);
   }
 
   const boite = $('#chromato-boite');
@@ -237,12 +270,14 @@ function rendreLigneBases(doc: DocumentSeq): void {
   ligne.style.fontSize = `${Math.max(6, Math.min(15, ecartMoyen * 0.78)).toFixed(1)}px`;
 
   const ecretage = doc.ecretage;
+  const doubles = new Set((doc.doubles ?? []).map((d) => d.index));
   const morceaux: string[] = [];
   for (const place of places) {
     const i = place.i;
     const b = bases[i] as string;
     const classes = ['b', `b-${'ACGT'.includes(b) ? b : 'N'}`];
     if (doc.editionsBases.has(i)) classes.push('edite');
+    if (doubles.has(i)) classes.push('double');
     if (ecretage && (i < ecretage.debut || i >= ecretage.fin)) classes.push('hors');
     if (i === choisie) classes.push('choisie');
     const q = doc.abif.qualites[i];
@@ -507,6 +542,72 @@ export function rendre(): void {
   rendreSequence(doc);
 }
 
+/** Cherche les positions à deux pics — les hétérozygotes que l'appeleur du
+ *  séquenceur a tranchés sans le dire. La recherche se limite d'elle-même à la
+ *  zone exploitable : la queue d'une lecture en fabrique des centaines. */
+function chercherDoubles(doc: DocumentSeq): void {
+  const bilan = $('#bilan-doubles');
+  const bouton = $('#btn-double-suivant');
+  if (doc.genre !== 'ab1' || !doc.abif) {
+    bilan.textContent = 'Seul un chromatogramme porte des pics.';
+    bouton.hidden = true;
+    return;
+  }
+  const seuil = Math.max(5, Math.min(95, Number(($('#seuil-double') as HTMLInputElement).value) || 33)) / 100;
+  doc.seuilDouble = seuil;
+  doc.doubles = picsDoubles(doc.abif, {seuil});
+  doubleCourant = -1;
+  const douteux = doc.doubles.filter((d) => d.appelDouteux).length;
+  bilan.className = doc.doubles.length ? 'note rouge' : 'note';
+  bilan.textContent = doc.doubles.length
+    ? `${doc.doubles.length} position${doc.doubles.length > 1 ? 's' : ''} à deux pics` +
+      (douteux ? `, dont ${douteux} où la base appelée n’est pas la plus haute` : '') +
+      ` — entre les bases ${nb((doc.ecretage?.debut ?? 0) + 1)} et ${nb(doc.ecretage?.fin ?? doc.abif.bases.length)}`
+    : 'Aucun second pic au-dessus du seuil dans la zone exploitable.';
+  bouton.hidden = doc.doubles.length === 0;
+  rendre();
+}
+
+/** Va au pic double suivant : même geste que pour les ambiguïtés, et la lettre
+ *  proposée est le code IUPAC des deux bases — pas l'une des deux. */
+function allerDoubleSuivant(doc: DocumentSeq): void {
+  const liste = doc.doubles ?? [];
+  if (!liste.length) return;
+  doubleCourant = (doubleCourant + 1) % liste.length;
+  const pic = liste[doubleCourant] as PicDouble;
+  choisie = pic.index;
+  etat.vue.premiere = Math.max(0, pic.index - Math.floor(etat.vue.combien / 2));
+  rendreMeta(doc);
+
+  const boite = $('#ambiguite');
+  boite.hidden = false;
+  boite.innerHTML =
+    `<div class="barre" style="margin:0">
+       <span class="quoi">Base <strong>${nb(pic.index + 1)}</strong> du fichier —
+         appelée <strong class="b-${pic.appelee}">${ech(pic.appelee)}</strong>,
+         second pic <strong class="b-${pic.seconde}">${pic.seconde}</strong>
+         à <strong${pic.appelDouteux ? ' class="rouge"' : ''}>${nb(pic.rapport * 100, 0)} %</strong>
+         ${pic.appelDouteux ? '<span class="rouge">(plus haut que la base appelée)</span>' : ''}</span>
+       <label class="champ">écrire
+         <input type="text" id="double-lettre" maxlength="1" style="width:3.2rem;text-align:center"
+                value="${pic.iupac}"></label>
+       <button id="btn-double-appliquer" class="primary">Appliquer</button>
+       <button id="btn-double-passer">Passer</button>
+       <span class="note">${nb(doubleCourant + 1)} sur ${nb(liste.length)}</span>
+     </div>`;
+  $('#btn-double-passer').addEventListener('click', () => allerDoubleSuivant(doc));
+  $('#btn-double-appliquer').addEventListener('click', () => {
+    const val = ($('#double-lettre') as HTMLInputElement).value.toUpperCase();
+    if (!/^[ACGTRYSWKMBDHVN]$/.test(val)) {
+      boite.insertAdjacentHTML('beforeend',
+        '<p class="err">Seule une lettre du code IUPAC est acceptée.</p>');
+      return;
+    }
+    corrigerBase(doc, pic.index, val);
+    allerDoubleSuivant(doc);
+  });
+}
+
 /** Va à la prochaine base ambiguë : centre le chromatogramme dessus, la
  *  sélectionne, et propose la base du pic le plus haut. Ne boucle pas toute
  *  seule au début — sauter en arrière sans le dire ferait croire qu'on avance. */
@@ -759,6 +860,14 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
   $('#btn-ambiguite').addEventListener('click', () => {
     const doc = docActif();
     if (doc) allerAmbiguiteSuivante(doc);
+  });
+  $('#btn-doubles').addEventListener('click', () => {
+    const doc = docActif();
+    if (doc) chercherDoubles(doc);
+  });
+  $('#btn-double-suivant').addEventListener('click', () => {
+    const doc = docActif();
+    if (doc) allerDoubleSuivant(doc);
   });
 
   // Le bloc « sonde » s'éteint visuellement quand la case est décochée : on
