@@ -437,6 +437,11 @@ test('les conditions de réaction se règlent et changent les Tm', async ({page}
   await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
   // Les colonnes de structures existent : ΔG du dimère et de l'épingle.
   await expect(page.locator('#resultats th', {hasText: 'ΔG'})).toBeVisible();
+  // Autant de cellules que d'en-têtes : une colonne ajoutée sans son titre
+  // décale tout le tableau, et ça ne se voit qu'à l'œil — donc jamais.
+  const colonnes = await page.locator('#resultats thead th').count();
+  const cellules = await page.locator('#resultats tbody tr').first().locator('td').count();
+  expect(cellules).toBe(colonnes);
   const avant = await page.locator('#resultats tbody tr').first().innerText();
 
   // Beaucoup plus de magnésium : les amorces retenues ne sont plus les mêmes,
@@ -449,10 +454,41 @@ test('les conditions de réaction se règlent et changent les Tm', async ({page}
   expect(apres).not.toEqual(avant);
 });
 
+test('la spécificité est vérifiée sur les autres fichiers ouverts', async ({page}) => {
+  // Deux fois la même séquence : chaque amorce s'hybride forcément deux fois.
+  // C'est le cas du paralogue, et aucune paire ne doit passer.
+  await page.evaluate(() => {
+    let x = 41;
+    let s = '';
+    for (let i = 0; i < 1200; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
+    return window.seqops!.accepter([
+      new File([`>cible\n${s}\n`], 'cible.fas', {type: 'text/plain'}),
+      new File([`>paralogue\n${s}\n`], 'paralogue.fas', {type: 'text/plain'})
+    ]);
+  });
+  // Le fichier actif est le dernier chargé ; on revient sur la cible.
+  await page.locator('#liste li').first().click();
+  await expect(page.locator('#spec-cibles')).toContainText('paralogue.fas');
+
+  await page.fill('#amp-min', '150');
+  await page.fill('#amp-max', '400');
+  await page.click('#btn-amorces');
+  await expect(page.locator('#taches .tache').first()).toContainText(/terminée|arrêtée/, {timeout: 60_000});
+  await expect(page.locator('#resultats')).toContainText('manque de spécificité');
+
+  // Sans l'exigence, les paires reviennent — avec leur défaut affiché en rouge.
+  await page.uncheck('#spec-exiger');
+  await page.click('#btn-amorces');
+  await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
+  await expect(page.locator('#resultats tbody tr').first()).toContainText('parasite');
+  await expect(page.locator('#resultats .rouge').first()).toBeVisible();
+});
+
 test('les réglages d’amorces sont rangés, la sonde s’éteint quand on ne la veut pas', async ({page}) => {
   await page.setInputFiles('#fichiers', cheminFasta);
-  await expect(page.locator('#p-amorces fieldset')).toHaveCount(3);
+  await expect(page.locator('#p-amorces fieldset')).toHaveCount(4);
   await expect(page.locator('#p-amorces legend').nth(1)).toHaveText('Réaction');
+  await expect(page.locator('#p-amorces legend').nth(2)).toHaveText('Spécificité');
   await expect(page.locator('#p-amorces legend').first()).toHaveText('Amorces');
   await expect(page.locator('#bloc-sonde')).toHaveClass(/eteint/);
   await page.check('#opt-sonde');

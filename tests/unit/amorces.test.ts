@@ -172,3 +172,47 @@ describe('sonde d’hydrolyse', () => {
     }
   });
 });
+
+describe('spécificité', () => {
+  const seq = sequence(1500, 31);
+
+  it('toutes les paires rendues sont spécifiques par défaut', () => {
+    const r = balayageAmorces.executer({seq, ampliconMin: 150, ampliconMax: 500, maxPaires: 20}, contexte());
+    expect(r.paires.length).toBeGreaterThan(0);
+    for (const p of r.paires) {
+      expect(p.sitesAvant).toBe(1);
+      expect(p.sitesArriere).toBe(1);
+      expect(p.parasites).toHaveLength(0);
+    }
+    expect(r.verifieeSur).toEqual(['cible']);
+  });
+
+  it('une cible dupliquée fait tout écarter — c’est le cas du paralogue', () => {
+    // La même séquence deux fois : chaque amorce s'hybride forcément deux fois.
+    const r = balayageAmorces.executer(
+      {seq, ampliconMin: 150, ampliconMax: 500, maxPaires: 20,
+       autresSequences: [{nom: 'paralogue', seq}]}, contexte());
+    expect(r.paires).toHaveLength(0);
+    expect(r.ecarteesSpecificite).toBeGreaterThan(0);
+    expect(r.verifieeSur).toEqual(['cible', 'paralogue']);
+  });
+
+  it('...et la même recherche passe si on n’exige plus la spécificité', () => {
+    const r = balayageAmorces.executer(
+      {seq, ampliconMin: 150, ampliconMax: 500, maxPaires: 20,
+       autresSequences: [{nom: 'paralogue', seq}], exigerSpecificite: false}, contexte());
+    expect(r.paires.length).toBeGreaterThan(0);
+    // Et le défaut est annoncé, pas caché : deux sites, un produit parasite.
+    expect(r.paires[0]!.sitesAvant).toBe(2);
+    expect(r.paires[0]!.parasites.length).toBeGreaterThan(0);
+    expect(r.paires[0]!.parasites[0]!.source).toBe('paralogue');
+  });
+
+  it('une séquence étrangère ne gêne personne', () => {
+    const r = balayageAmorces.executer(
+      {seq, ampliconMin: 150, ampliconMax: 500, maxPaires: 10,
+       autresSequences: [{nom: 'vecteur', seq: sequence(3000, 999)}]}, contexte());
+    expect(r.paires.length).toBeGreaterThan(0);
+    expect(r.paires.every((p) => p.parasites.length === 0)).toBe(true);
+  });
+});

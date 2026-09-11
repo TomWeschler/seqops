@@ -153,6 +153,19 @@
         </div>
       </fieldset>
 
+      <fieldset>
+        <legend>Spécificité</legend>
+        <div class="reglage">
+          <span class="quoi">Mésappariements tolérés</span>
+          <input type="number" id="spec-mes" value="3" min="0" max="8" step="1">
+          <span class="unite" style="grid-column:span 3">hors 3′, qui doit être parfait</span>
+        </div>
+        <label class="case" style="margin-top:.5rem">
+          <input type="checkbox" id="spec-exiger" checked>
+          N’afficher que les paires spécifiques</label>
+        <p class="note" id="spec-cibles">Vérifiée sur la séquence en cours.</p>
+      </fieldset>
+
       <fieldset id="bloc-sonde" class="eteint">
         <legend><label class="case"><input type="checkbox" id="opt-sonde"> Sonde (qPCR)</label></legend>
         <div class="reglage">

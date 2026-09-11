@@ -14,6 +14,8 @@
 
 import {complementInverse, composition} from '../core/sequence.js';
 import {dimere, epingle, tm as tmPcr} from '../core/thermo.js';
+import {ampliconsParasites, sitesHybridation} from '../core/specificite.js';
+import type {AmpliconParasite} from '../core/specificite.js';
 import type {Conditions, Structure} from '../core/thermo.js';
 import type {Calcul, Contexte} from './types.js';
 
@@ -52,6 +54,15 @@ export interface ParamsAmorces {
    *  une sonde perdue au milieu de l'amplicon donne un signal plus tardif et
    *  plus faible. Il suffit qu'elle soit près de F OU de R. */
   readonly sondeDistanceMax?: number;
+  /** Les autres séquences ouvertes : paralogues, vecteur, second amplicon. On
+   *  y cherche aussi les sites d'hybridation — c'est là que se cachent les
+   *  bandes parasites. La cible elle-même est toujours vérifiée. */
+  readonly autresSequences?: readonly {nom: string; seq: string}[];
+  /** Mésappariements tolérés pour qu'un site compte comme hybridable. */
+  readonly mesappariementsMax?: number;
+  /** Écarter les paires qui s'hybrident ailleurs ou qui forment un produit
+   *  parasite. Vrai par défaut : une paire non spécifique n'est pas une paire. */
+  readonly exigerSpecificite?: boolean;
 }
 
 export interface Amorce {
@@ -100,6 +111,12 @@ export interface PaireAmorces {
   readonly dgDimere: number;
   readonly dimere3: boolean;
   readonly sonde?: Sonde;
+  /** Nombre de sites d'hybridation de chaque amorce, toutes séquences
+   *  confondues. 1 et 1, c'est ce qu'on veut. */
+  readonly sitesAvant: number;
+  readonly sitesArriere: number;
+  /** Produits que ces amorces peuvent former ailleurs que sur leur cible. */
+  readonly parasites: readonly AmpliconParasite[];
 }
 
 export interface ResultatAmorces {
@@ -111,6 +128,10 @@ export interface ResultatAmorces {
   readonly sansSonde: number;
   /** Paires écartées parce que les deux amorces formaient un dimère trop stable. */
   readonly ecarteesDimere: number;
+  /** Paires écartées parce qu'elles s'hybridaient ailleurs qu'à leur cible. */
+  readonly ecarteesSpecificite: number;
+  /** Séquences sur lesquelles la spécificité a été vérifiée. */
+  readonly verifieeSur: readonly string[];
   readonly pairesExaminees: number;
   readonly interrompu: boolean;
 }
@@ -213,6 +234,9 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
       dgEpingleMax: params.dgEpingleMax ?? -3,
       dgDimereMax: params.dgDimereMax ?? -8,
       dgDimere3Max: params.dgDimere3Max ?? -5,
+      autresSequences: params.autresSequences ?? [],
+      mesappariementsMax: params.mesappariementsMax ?? 3,
+      exigerSpecificite: params.exigerSpecificite ?? true,
       maxPaires: params.maxPaires ?? 50,
       sonde: params.sonde ?? false,
       // Huit à dix degrés au-dessus des amorces : la règle de la qPCR.
@@ -225,7 +249,8 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
     const L = seq.length;
     if (L < p.ampliconMin) {
       return {paires: [], candidatsAvant: 0, candidatsArriere: 0, candidatsSonde: 0,
-              sansSonde: 0, ecarteesDimere: 0, pairesExaminees: 0, interrompu: false};
+              sansSonde: 0, ecarteesDimere: 0, ecarteesSpecificite: 0, verifieeSur: [],
+              pairesExaminees: 0, interrompu: false};
     }
 
     // 1. Les candidats, position par position et longueur par longueur.
@@ -239,6 +264,7 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
         if (ctx.annule()) {
           return {paires: [], candidatsAvant: avant.length, candidatsArriere: arriere.length,
                   candidatsSonde: sondes.length, sansSonde: 0, ecarteesDimere: 0,
+                  ecarteesSpecificite: 0, verifieeSur: [],
                   pairesExaminees: 0, interrompu: true};
         }
         ctx.signaler(i, L * 2, 'recherche des amorces candidates');
@@ -304,7 +330,8 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
                       grossier;
         if (retenues.length >= p.maxPaires && score >= pire) continue;
         retenues.push({avant: f, arriere: r, amplicon, deltaTm, score,
-                       dgDimere: 0, dimere3: false});
+                       dgDimere: 0, dimere3: false,
+                       sitesAvant: 0, sitesArriere: 0, parasites: []});
         if (retenues.length > p.maxPaires * 4) {
           retenues.sort((a, b) => a.score - b.score);
           retenues.length = p.maxPaires;
@@ -330,6 +357,35 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
     avecDg.sort((a, b) => a.score - b.score);
     retenues.length = 0;
     retenues.push(...avecDg);
+
+    // 2 ter. LA SPÉCIFICITÉ. Une amorce qui s'hybride deux fois sur la cible,
+    //         ou une fois sur le paralogue ouvert à côté, donne une deuxième
+    //         bande sur le gel. On vérifie sur la cible ET sur toutes les
+    //         séquences fournies, et on écarte — c'est réglable — les paires
+    //         qui forment un produit ailleurs.
+    const cibles = [{nom: 'cible', seq}, ...p.autresSequences];
+    const optionsSites = {mesappariementsMax: p.mesappariementsMax, mesappariements3Max: 0};
+    let ecarteesSpecificite = 0;
+    if (retenues.length) {
+      const specifiques: PaireAmorces[] = [];
+      for (const [rang, paire] of retenues.entries()) {
+        if ((rang & 7) === 0 && ctx.annule()) { interrompu = true; break; }
+        const compter = (oligo: string) =>
+          cibles.reduce((n, c) => n + sitesHybridation(c.seq, c.nom, oligo, optionsSites).length, 0);
+        const sitesAvant = compter(paire.avant.seq);
+        const sitesArriere = compter(paire.arriere.seq);
+        const parasites = ampliconsParasites(
+          [{nom: 'F', seq: paire.avant.seq}, {nom: 'R', seq: paire.arriere.seq}],
+          cibles, p.ampliconMax * 3, optionsSites
+        // Le produit voulu n'est pas un parasite : on le retire du compte.
+        ).filter((x) => !(x.source === 'cible' && x.debut === paire.avant.debut && x.fin === paire.arriere.fin));
+        const propre = sitesAvant === 1 && sitesArriere === 1 && parasites.length === 0;
+        if (p.exigerSpecificite && !propre) { ecarteesSpecificite++; continue; }
+        specifiques.push({...paire, sitesAvant, sitesArriere, parasites: parasites.slice(0, 5)});
+      }
+      retenues.length = 0;
+      retenues.push(...specifiques);
+    }
 
     // 3. La sonde, cherchée sur les meilleures paires et non sur les millions
     //    de couples examinés : elle ne départage pas les amorces, elle
@@ -387,7 +443,8 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
 
     ctx.signaler(L * 2, L * 2, interrompu ? 'interrompu' : 'terminé');
     return {paires: finales, candidatsAvant: avant.length, candidatsArriere: arriere.length,
-            candidatsSonde: sondes.length, sansSonde, ecarteesDimere,
+            candidatsSonde: sondes.length, sansSonde, ecarteesDimere, ecarteesSpecificite,
+            verifieeSur: cibles.map((c) => c.nom),
             pairesExaminees: examinees, interrompu};
   }
 };

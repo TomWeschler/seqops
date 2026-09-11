@@ -96,6 +96,32 @@ lire un entier. Sans ces en-têtes (par exemple en développement), l'arrêt
 supprime le travailleur : net, mais sans résultat partiel. L'application dit
 lequel des deux régimes est actif, en pied de page.
 
+## Ce que l'outil sait faire, et ce qu'il ne sait pas
+
+Trois choses ont été ajoutées après confrontation à un fichier réel, et chacune
+a une limite qu'il vaut mieux connaître.
+
+**Les hétérozygotes** sont cherchés dans les traces, parce que l'appel de bases
+du séquenceur les tranche sans le dire. La recherche se limite à une zone
+exploitable déduite du signal, et deux filtres écartent les faux positifs
+(l'épaulement du pic voisin, la traîne d'une suite de bases identiques). Ce
+n'est pas un appel de variants : l'outil signale des positions à vérifier, il
+ne décide pas du génotype.
+
+**La thermodynamique** tient compte des sels réels d'une PCR (équivalent sodium
+de von Ahsen 2001) et évalue les structures en ΔG plutôt qu'en longueur
+d'appariement. Approximation assumée : les mésappariements internes d'un dimère
+ne reçoivent pas de pénalité, ils coupent le segment apparié. Un moteur compilé
+(primer3) ferait mieux ; le jour où il sera là, les seuils exprimés en kcal/mol
+se transposeront tels quels.
+
+**La spécificité** est vérifiée sur les séquences ouvertes — la cible, et tout
+ce qu'on charge à côté : paralogue, vecteur, amplicon voisin. C'est ce qui
+attrape la deuxième bande du gel. Ce n'est PAS un BLAST : l'outil ne connaît que
+ce qu'on lui donne, et il ne peut pas savoir qu'une amorce s'hybride ailleurs
+dans un génome qu'il n'a pas. Interroger le NCBI supposerait d'y envoyer les
+séquences — c'est le niveau 2, et c'est une décision d'entreprise.
+
 ## Les moteurs open source, et ce qu'on en fera
 
 Aucun n'est utilisable tel quel dans un navigateur : ce sont des programmes R,

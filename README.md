@@ -22,7 +22,10 @@ sur un poste d'entreprise.
 | Trancher les ambiguïtés | « Prochaine ambiguïté › » amène sur la position dans le chromatogramme, propose la base du pic dominant avec son rapport au second, et corrige base à base. |
 | Analyser | Composition, GC, biais, GC glissant, Tm (Wallace, GC %, plus proche voisin SantaLucia 1998), masse, cadres ouverts, motifs IUPAC. |
 | Chercher des amorces | Balayage exhaustif des couples possibles, avec Tm, GC, pince GC en 3', répétitions et dimères. Long, interruptible, rend un résultat partiel. |
-| Chercher une sonde | Sonde d'hydrolyse (qPCR) entre les deux amorces : Tm et longueur réglables, jamais de G en 5', brin le plus riche en C, placée au plus près de l'amorce avant. |
+| Chercher une sonde | Sonde d'hydrolyse (qPCR) entre les deux amorces : Tm et longueur réglables, jamais de G en 5', brin le plus riche en C, collée à F ou à R (écart réglable). |
+| Vérifier la spécificité | Sites d'hybridation de chaque amorce sur la cible **et sur tous les autres fichiers ouverts** (paralogue, vecteur), et détection des produits parasites — la deuxième bande du gel. |
+| Calculer juste | Tm dans les conditions réelles de la réaction (K⁺, Mg²⁺, dNTP, amorce) et non à 50 mM de sodium ; épingles et dimères évalués en ΔG. |
+| Débusquer les hétérozygotes | Positions à deux pics que l'appel de bases a tranchées sans le dire, cherchées dans la zone exploitable, avec le code IUPAC proposé. |
 | Exporter | Rapport texte (cahier de manip, dépôt git) et rapport HTML autonome (envoi, impression), `.fas` corrigé. |
 
 ## Démarrer

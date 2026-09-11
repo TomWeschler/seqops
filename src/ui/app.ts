@@ -493,19 +493,36 @@ function rendreAmorces(r: ResultatAmorces): void {
     // elle a été interrompue avant d'apparier quoi que ce soit. Dire « aucune
     // paire ne satisfait ces critères » dans le second cas, c'est faire croire
     // à un résultat là où il n'y a pas eu de recherche.
+    // Dire POURQUOI il n'y a rien : « aucune paire » sans motif oblige à
+    // tâtonner sur les réglages. Chaque filtre annonce ce qu'il a emporté.
+    const motifs: string[] = [];
+    if (r.ecarteesSpecificite) {
+      motifs.push(`<strong>${nb(r.ecarteesSpecificite)}</strong> écartées pour manque de spécificité` +
+        ` (vérifiée sur ${ech(r.verifieeSur.join(', '))})`);
+    }
+    if (r.ecarteesDimere) motifs.push(`<strong>${nb(r.ecarteesDimere)}</strong> écartées pour dimère trop stable`);
+    if (r.sansSonde) motifs.push(`<strong>${nb(r.sansSonde)}</strong> écartées faute de sonde dans la fenêtre`);
+
     box.innerHTML = r.interrompu
       ? `<p class="vide">Recherche interrompue avant l’appariement :
           ${nb(r.candidatsAvant)} amorces avant et ${nb(r.candidatsArriere)} arrière
           avaient été recensées, aucun couple n’avait encore été examiné.
           Relancez pour aller au bout.</p>`
-      : `<p class="vide">Aucune paire ne satisfait ces critères
-          (${nb(r.candidatsAvant)} amorces avant, ${nb(r.candidatsArriere)} arrière,
-          ${nb(r.pairesExaminees)} couples examinés).</p>`;
+      : motifs.length
+        ? `<p class="alerte">Aucune paire retenue : ${motifs.join(' · ')}.</p>
+           <p class="note">${nb(r.candidatsAvant)} amorces avant, ${nb(r.candidatsArriere)} arrière,
+           ${nb(r.pairesExaminees)} couples examinés. Desserrez le réglage en cause,
+           ou chargez la bonne séquence de contre-épreuve.</p>`
+        : `<p class="vide">Aucune paire ne satisfait ces critères
+            (${nb(r.candidatsAvant)} amorces avant, ${nb(r.candidatsArriere)} arrière,
+            ${nb(r.pairesExaminees)} couples examinés).</p>`;
     return;
   }
   // Un ΔG de 0 veut dire « aucune structure » : l'écrire « 0,0 kcal » ferait
   // croire à une mesure, alors que c'est une absence.
   const dgLisible = (v: number) => (v === 0 ? '—' : `${nb(v, 1)}`);
+  // Un site, c'est ce qu'on veut ; deux, c'est un problème, et ça se voit.
+  const sitesLisible = (n: number) => (n === 1 ? '1' : `<span class="rouge">${nb(n)}</span>`);
   const avecSonde = r.paires.some((p) => p.sonde);
   const celluleSonde = (s?: Sonde) => s
     ? `<td class="mono">${ech(s.seq)}<br><span class="note">brin ${s.brin} · ${nb(s.debut)}..${nb(s.fin)}
@@ -517,12 +534,16 @@ function rendreAmorces(r: ResultatAmorces): void {
          s.dgAvecAmorces !== 0 ? ` · ΔG amorces ${nb(s.dgAvecAmorces, 1)}` : ''}</span></td>`
     : '';
   box.innerHTML = `<p class="note">${nb(r.paires.length)} meilleures paires sur ${nb(r.pairesExaminees)} couples
-    examinés${r.interrompu ? ', recherche interrompue — résultat partiel' : ''}${
+    examinés — spécificité vérifiée sur ${ech(r.verifieeSur.join(', '))}${
+      r.interrompu ? ', recherche interrompue — résultat partiel' : ''}${
       r.ecarteesDimere ? ` ; ${nb(r.ecarteesDimere)} paires écartées pour dimère trop stable` : ''}${
+      r.ecarteesSpecificite ? ` ; ${nb(r.ecarteesSpecificite)} écartées pour manque de spécificité` : ''}${
       avecSonde ? ` ; ${nb(r.candidatsSonde)} sondes candidates recensées, ${nb(r.sansSonde)} paires écartées faute de sonde` : ''}.</p>
     <div class="tbl"><table><thead><tr><th>#</th><th>Amorce avant</th><th>Amorce arrière</th>
     ${avecSonde ? '<th>Sonde</th>' : ''}
-    <th>Amplicon</th><th>Tm F / R</th><th>ΔTm</th><th title="Énergie libre des structures : dimère des deux amorces, et pire épingle à cheveux. Plus c’est négatif, plus la structure tient.">ΔG dimère / épingle</th><th>Score</th></tr></thead><tbody>` +
+    <th>Amplicon</th><th>Tm F/R</th><th>ΔTm</th><th title="Énergie libre des structures, en kcal/mol : dimère des deux amorces, puis la pire épingle à cheveux. Plus c’est négatif, plus la structure tient.">ΔG dim./épin.</th>
+    <th title="Sites d’hybridation de chaque amorce sur toutes les séquences ouvertes. 1 / 1, c’est ce qu’on veut.">Sites</th>
+    <th>Score</th></tr></thead><tbody>` +
     r.paires.map((p, i) => `<tr>
       <td class="mono">${i + 1}</td>
       <td class="mono">${ech(p.avant.seq)}<br><span class="note">${nb(p.avant.debut)}..${nb(p.avant.fin)} · GC ${nb(p.avant.gc, 0)} %</span></td>
@@ -533,12 +554,28 @@ function rendreAmorces(r: ResultatAmorces): void {
       <td class="mono">${nb(p.deltaTm, 1)}</td>
       <td class="mono">${dgLisible(p.dgDimere)}${p.dimere3 ? ' <span class="rouge" title="l’appariement touche une extrémité 3′">3′</span>' : ''}
         <br><span class="note">${dgLisible(Math.min(p.avant.dgEpingle, p.arriere.dgEpingle))}</span></td>
+      <td class="mono">${sitesLisible(p.sitesAvant)} / ${sitesLisible(p.sitesArriere)}${
+        p.parasites.length
+          ? `<br><span class="rouge note">${nb(p.parasites.length)} produit${p.parasites.length > 1 ? 's' : ''} parasite${p.parasites.length > 1 ? 's' : ''} : ` +
+            ech(p.parasites.slice(0, 2).map((x) => `${x.taille} pb sur ${x.source}`).join(', ')) + '</span>'
+          : ''}</td>
       <td class="mono">${nb(p.score, 2)}</td></tr>`).join('') +
     '</tbody></table></div>';
 }
 
+function rendreCiblesSpecificite(): void {
+  const doc = docActif();
+  const autres = etat.docs.filter((d) => d.id !== doc?.id);
+  $('#spec-cibles').textContent = autres.length
+    ? `Vérifiée sur la séquence en cours et ${autres.length} autre${autres.length > 1 ? 's' : ''} ` +
+      `fichier${autres.length > 1 ? 's' : ''} ouvert${autres.length > 1 ? 's' : ''} : ` +
+      autres.map((d) => d.nom).join(', ') + '.'
+    : 'Vérifiée sur la séquence en cours. Ouvrez un paralogue ou un vecteur pour l’y confronter.';
+}
+
 export function rendre(): void {
   rendreListe();
+  rendreCiblesSpecificite();
   const doc = docActif();
   const montrer = doc !== null;
   for (const id of ['#p-lecture', '#p-sequence', '#p-analyse', '#p-amorces', '#p-taches']) {
@@ -1006,7 +1043,15 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
       conditions: {
         oligoNM: val('#c-oligo'), kMM: val('#c-k'), trisMM: val('#c-tris'),
         mgMM: val('#c-mg'), dntpMM: val('#c-dntp')
-      }
+      },
+      mesappariementsMax: val('#spec-mes'),
+      exigerSpecificite: ($('#spec-exiger') as HTMLInputElement).checked,
+      // Toutes les autres séquences ouvertes servent de contre-épreuve : c'est
+      // là qu'on charge le paralogue, le vecteur, l'amplicon voisin.
+      autresSequences: etat.docs
+        .filter((d) => d.id !== doc.id)
+        .map((d) => ({nom: d.nom, seq: sequenceCourante(d)}))
+        .filter((d) => d.seq.length > 0)
     };
     $('#resultats').innerHTML = '<p class="vide">Recherche en cours…</p>';
     const id = executeur.lancer<ResultatAmorces>('amorces/balayage', params, {
