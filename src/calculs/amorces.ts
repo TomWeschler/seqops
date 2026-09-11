@@ -12,7 +12,9 @@
  *  d'amorces). Primer3 fait mieux et le fera : voir docs/architecture.md, le
  *  moteur est remplaçable sans toucher au reste. */
 
-import {complementInverse, composition, tmPlusProcheVoisin} from '../core/sequence.js';
+import {complementInverse, composition} from '../core/sequence.js';
+import {dimere, epingle, tm as tmPcr} from '../core/thermo.js';
+import type {Conditions, Structure} from '../core/thermo.js';
 import type {Calcul, Contexte} from './types.js';
 
 export interface ParamsAmorces {
@@ -27,8 +29,15 @@ export interface ParamsAmorces {
   readonly ampliconMin?: number;
   readonly ampliconMax?: number;
   readonly deltaTmMax?: number;
-  readonly oligoNM?: number;
-  readonly selMM?: number;
+  /** Conditions de la réaction : sels, dNTP, concentration d'amorce. Ce sont
+   *  elles qui fixent les Tm ; les valeurs par défaut sont celles d'une PCR
+   *  ordinaire, pas celles d'un tube de sodium pur. */
+  readonly conditions?: Conditions;
+  /** ΔG maximal toléré pour une épingle à cheveux, en kcal/mol (négatif). */
+  readonly dgEpingleMax?: number;
+  /** ΔG maximal toléré pour un dimère, et pour un dimère qui touche le 3'. */
+  readonly dgDimereMax?: number;
+  readonly dgDimere3Max?: number;
   readonly maxPaires?: number;
   /** Chercher une sonde d'hydrolyse entre les deux amorces. Une paire sans
    *  sonde exploitable est alors écartée : en qPCR, elle ne sert à rien. */
@@ -55,6 +64,10 @@ export interface Amorce {
   readonly gc: number;
   /** Nombre de G ou C dans les cinq dernières bases côté 3'. */
   readonly pince: number;
+  /** ΔG de la meilleure épingle à cheveux, en kcal/mol (0 = aucune). */
+  readonly dgEpingle: number;
+  /** ΔG du meilleur auto-dimère. */
+  readonly dgAutoDimere: number;
 }
 
 export interface Sonde {
@@ -67,6 +80,8 @@ export interface Sonde {
   readonly seq: string;
   readonly tm: number;
   readonly gc: number;
+  /** ΔG du pire dimère entre la sonde et l'une des deux amorces. */
+  readonly dgAvecAmorces: number;
   /** Bases entre la fin de l'amorce avant et le début de la sonde. */
   readonly distanceAvant: number;
   /** Bases entre la fin de la sonde et le début de l'amorce arrière. */
@@ -81,7 +96,9 @@ export interface PaireAmorces {
   readonly amplicon: number;
   readonly deltaTm: number;
   readonly score: number;
-  readonly dimere: number;
+  /** ΔG du dimère entre les deux amorces, et vrai s'il touche une extrémité 3'. */
+  readonly dgDimere: number;
+  readonly dimere3: boolean;
   readonly sonde?: Sonde;
 }
 
@@ -92,6 +109,8 @@ export interface ResultatAmorces {
   readonly candidatsSonde: number;
   /** Paires écartées faute de sonde exploitable entre les deux amorces. */
   readonly sansSonde: number;
+  /** Paires écartées parce que les deux amorces formaient un dimère trop stable. */
+  readonly ecarteesDimere: number;
   readonly pairesExaminees: number;
   readonly interrompu: boolean;
 }
@@ -141,10 +160,11 @@ function evaluerSonde(
     if (oligo.startsWith('G')) continue;              // fluorophore éteint
     const c = composition(oligo);
     if (c.gc < 30 || c.gc > 80) continue;
-    const tm = tmPlusProcheVoisin(oligo, p.oligoNM, p.selMM);
+    const tm = tmPcr(oligo, p.conditions);
     if (tm === null || tm < p.sondeTmMin || tm > p.sondeTmMax) continue;
+    if (epingle(oligo).dg < p.dgEpingleMax) continue;
     return {brin, debut: debut + 1, fin: debut + longueur, seq: oligo, tm, gc: c.gc,
-            distanceAvant: 0, distanceArriere: 0, collee: 'F'};
+            dgAvecAmorces: 0, distanceAvant: 0, distanceArriere: 0, collee: 'F'};
   }
   return null;
 }
@@ -160,13 +180,19 @@ function evaluer(
   const c = composition(oligo);
   const gc = c.gc;
   if (gc < p.gcMin || gc > p.gcMax) return null;
-  const tm = tmPlusProcheVoisin(oligo, p.oligoNM, p.selMM);
+  const tm = tmPcr(oligo, p.conditions);
   if (tm === null || tm < p.tmMin || tm > p.tmMax) return null;
   const cinq = oligo.slice(-5);
   const pince = (cinq.match(/[GC]/g) ?? []).length;
   if (pince < 1 || pince > 3) return null;                // ni décollée, ni collée
-  if (complementariteTerminale(oligo, oligo) >= 5) return null;   // épingle à cheveux
-  return {sens, debut: debut + 1, fin: debut + longueur, seq: oligo, tm, gc, pince};
+  // Structures : un ΔG dit si elles tiennent à la température de travail ; la
+  // longueur du plus long appariement, non.
+  const dgEpingle = epingle(oligo).dg;
+  if (dgEpingle < p.dgEpingleMax) return null;
+  const auto = dimere(oligo, oligo);
+  if (auto.dg < (auto.touche3 ? p.dgDimere3Max : p.dgDimereMax)) return null;
+  return {sens, debut: debut + 1, fin: debut + longueur, seq: oligo, tm, gc, pince,
+          dgEpingle, dgAutoDimere: auto.dg};
 }
 
 export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
@@ -181,7 +207,12 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
       gcMin: params.gcMin ?? 40, gcMax: params.gcMax ?? 60,
       ampliconMin: params.ampliconMin ?? 100, ampliconMax: params.ampliconMax ?? 1000,
       deltaTmMax: params.deltaTmMax ?? 2,
-      oligoNM: params.oligoNM ?? 500, selMM: params.selMM ?? 50,
+      conditions: params.conditions ?? {},
+      // Seuils usuels d'un dessin d'amorces : une épingle sous −3 kcal/mol tient
+      // encore à 60 °C, un dimère en 3' sous −5 amorce une élongation parasite.
+      dgEpingleMax: params.dgEpingleMax ?? -3,
+      dgDimereMax: params.dgDimereMax ?? -8,
+      dgDimere3Max: params.dgDimere3Max ?? -5,
       maxPaires: params.maxPaires ?? 50,
       sonde: params.sonde ?? false,
       // Huit à dix degrés au-dessus des amorces : la règle de la qPCR.
@@ -194,7 +225,7 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
     const L = seq.length;
     if (L < p.ampliconMin) {
       return {paires: [], candidatsAvant: 0, candidatsArriere: 0, candidatsSonde: 0,
-              sansSonde: 0, pairesExaminees: 0, interrompu: false};
+              sansSonde: 0, ecarteesDimere: 0, pairesExaminees: 0, interrompu: false};
     }
 
     // 1. Les candidats, position par position et longueur par longueur.
@@ -207,7 +238,8 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
       if ((i & 255) === 0) {
         if (ctx.annule()) {
           return {paires: [], candidatsAvant: avant.length, candidatsArriere: arriere.length,
-                  candidatsSonde: sondes.length, sansSonde: 0, pairesExaminees: 0, interrompu: true};
+                  candidatsSonde: sondes.length, sansSonde: 0, ecarteesDimere: 0,
+                  pairesExaminees: 0, interrompu: true};
         }
         ctx.signaler(i, L * 2, 'recherche des amorces candidates');
       }
@@ -260,15 +292,19 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
         examinees++;
         const deltaTm = Math.abs(f.tm - r.tm);
         if (deltaTm > p.deltaTmMax) continue;
-        const dimere = Math.max(complementariteTerminale(f.seq, r.seq),
-                                complementariteTerminale(r.seq, f.seq));
-        if (dimere >= 5) continue;
+        // Filtre bon marché dans la boucle : calculer un ΔG exact sur des
+        // millions de couples coûterait des minutes pour rien. Les survivants
+        // passent ensuite à la thermodynamique, qui tranche.
+        const grossier = Math.max(complementariteTerminale(f.seq, r.seq),
+                                  complementariteTerminale(r.seq, f.seq));
+        if (grossier >= 7) continue;
         const score = deltaTm * 2 +
                       Math.abs(f.tm - p.tmOptimale) + Math.abs(r.tm - p.tmOptimale) +
                       Math.abs(f.gc - 50) / 5 + Math.abs(r.gc - 50) / 5 +
-                      dimere;
+                      grossier;
         if (retenues.length >= p.maxPaires && score >= pire) continue;
-        retenues.push({avant: f, arriere: r, amplicon, deltaTm, score, dimere});
+        retenues.push({avant: f, arriere: r, amplicon, deltaTm, score,
+                       dgDimere: 0, dimere3: false});
         if (retenues.length > p.maxPaires * 4) {
           retenues.sort((a, b) => a.score - b.score);
           retenues.length = p.maxPaires;
@@ -278,6 +314,22 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
     }
 
     retenues.sort((a, b) => a.score - b.score);
+
+    // 2 bis. Le ΔG du dimère entre les deux amorces, sur les paires retenues
+    //        seulement. Une paire qui s'apparie franchement est écartée ici —
+    //        c'est elle qui fabriquerait un dimère d'amorces dans le tube.
+    const avecDg: PaireAmorces[] = [];
+    let ecarteesDimere = 0;
+    for (const paire of retenues) {
+      const d: Structure = dimere(paire.avant.seq, paire.arriere.seq);
+      const limite = d.touche3 ? p.dgDimere3Max : p.dgDimereMax;
+      if (d.dg < limite) { ecarteesDimere++; continue; }
+      avecDg.push({...paire, dgDimere: d.dg, dimere3: d.touche3,
+                   score: paire.score + Math.max(0, -d.dg) / 2});
+    }
+    avecDg.sort((a, b) => a.score - b.score);
+    retenues.length = 0;
+    retenues.push(...avecDg);
 
     // 3. La sonde, cherchée sur les meilleures paires et non sur les millions
     //    de couples examinés : elle ne départage pas les amorces, elle
@@ -316,7 +368,17 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
           }
         }
         if (!meilleure) { sansSonde++; continue; }
-        avecSonde.push({...paire, sonde: meilleure, score: paire.score + meilleurScore / 2});
+        // Une sonde qui s'apparie à l'une des amorces est inutilisable : le
+        // signal part avant l'amplification.
+        const avecF = dimere(meilleure.seq, paire.avant.seq);
+        const avecR = dimere(meilleure.seq, paire.arriere.seq);
+        const pireDg = Math.min(avecF.dg, avecR.dg);
+        if (pireDg < p.dgDimereMax) { sansSonde++; continue; }
+        avecSonde.push({
+          ...paire,
+          sonde: {...meilleure, dgAvecAmorces: pireDg},
+          score: paire.score + meilleurScore / 2 + Math.max(0, -pireDg) / 4
+        });
       }
       avecSonde.sort((a, b) => a.score - b.score);
       finales = avecSonde;
@@ -325,6 +387,7 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
 
     ctx.signaler(L * 2, L * 2, interrompu ? 'interrompu' : 'terminé');
     return {paires: finales, candidatsAvant: avant.length, candidatsArriere: arriere.length,
-            candidatsSonde: sondes.length, sansSonde, pairesExaminees: examinees, interrompu};
+            candidatsSonde: sondes.length, sansSonde, ecarteesDimere,
+            pairesExaminees: examinees, interrompu};
   }
 };

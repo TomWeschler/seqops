@@ -89,6 +89,12 @@ export function rapportTexte(c: ContenuRapport): string {
       l.push(`  ${String(i + 1).padStart(3)}. amplicon ${p.amplicon} nt, ΔTm ${d1(p.deltaTm)} °C, score ${d2(p.score)}`);
       l.push(`       F ${p.avant.debut}..${p.avant.fin}  ${p.avant.seq}  Tm ${d1(p.avant.tm)} °C, GC ${d1(p.avant.gc)} %`);
       l.push(`       R ${p.arriere.debut}..${p.arriere.fin}  ${p.arriere.seq}  Tm ${d1(p.arriere.tm)} °C, GC ${d1(p.arriere.gc)} %`);
+      if (p.sonde) {
+        l.push(`       S ${p.sonde.debut}..${p.sonde.fin}  ${p.sonde.seq}  Tm ${d1(p.sonde.tm)} °C, ` +
+               `brin ${p.sonde.brin}, à ${p.sonde.collee === 'F' ? p.sonde.distanceAvant : p.sonde.distanceArriere} nt de ${p.sonde.collee}`);
+      }
+      l.push(`       ΔG dimère ${d1(p.dgDimere)} kcal/mol${p.dimere3 ? ' (touche le 3\u2032)' : ''}, ` +
+             `épingles ${d1(p.avant.dgEpingle)} / ${d1(p.arriere.dgEpingle)}`);
     }
   }
   l.push('');

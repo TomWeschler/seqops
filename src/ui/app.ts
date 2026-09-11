@@ -503,6 +503,9 @@ function rendreAmorces(r: ResultatAmorces): void {
           ${nb(r.pairesExaminees)} couples examinés).</p>`;
     return;
   }
+  // Un ΔG de 0 veut dire « aucune structure » : l'écrire « 0,0 kcal » ferait
+  // croire à une mesure, alors que c'est une absence.
+  const dgLisible = (v: number) => (v === 0 ? '—' : `${nb(v, 1)}`);
   const avecSonde = r.paires.some((p) => p.sonde);
   const celluleSonde = (s?: Sonde) => s
     ? `<td class="mono">${ech(s.seq)}<br><span class="note">brin ${s.brin} · ${nb(s.debut)}..${nb(s.fin)}
@@ -510,14 +513,16 @@ function rendreAmorces(r: ResultatAmorces): void {
        ${s.collee === 'F'
          ? `à ${nb(s.distanceAvant)} nt de F`
          : `à ${nb(s.distanceArriere)} nt de R`}${
-         Math.min(s.distanceAvant, s.distanceArriere) === 0 ? ' (collée)' : ''}</span></td>`
+         Math.min(s.distanceAvant, s.distanceArriere) === 0 ? ' (collée)' : ''}${
+         s.dgAvecAmorces !== 0 ? ` · ΔG amorces ${nb(s.dgAvecAmorces, 1)}` : ''}</span></td>`
     : '';
   box.innerHTML = `<p class="note">${nb(r.paires.length)} meilleures paires sur ${nb(r.pairesExaminees)} couples
     examinés${r.interrompu ? ', recherche interrompue — résultat partiel' : ''}${
+      r.ecarteesDimere ? ` ; ${nb(r.ecarteesDimere)} paires écartées pour dimère trop stable` : ''}${
       avecSonde ? ` ; ${nb(r.candidatsSonde)} sondes candidates recensées, ${nb(r.sansSonde)} paires écartées faute de sonde` : ''}.</p>
     <div class="tbl"><table><thead><tr><th>#</th><th>Amorce avant</th><th>Amorce arrière</th>
     ${avecSonde ? '<th>Sonde</th>' : ''}
-    <th>Amplicon</th><th>Tm F / R</th><th>ΔTm</th><th>Score</th></tr></thead><tbody>` +
+    <th>Amplicon</th><th>Tm F / R</th><th>ΔTm</th><th title="Énergie libre des structures : dimère des deux amorces, et pire épingle à cheveux. Plus c’est négatif, plus la structure tient.">ΔG dimère / épingle</th><th>Score</th></tr></thead><tbody>` +
     r.paires.map((p, i) => `<tr>
       <td class="mono">${i + 1}</td>
       <td class="mono">${ech(p.avant.seq)}<br><span class="note">${nb(p.avant.debut)}..${nb(p.avant.fin)} · GC ${nb(p.avant.gc, 0)} %</span></td>
@@ -526,6 +531,8 @@ function rendreAmorces(r: ResultatAmorces): void {
       <td class="mono">${nb(p.amplicon)} nt</td>
       <td class="mono">${nb(p.avant.tm, 1)} / ${nb(p.arriere.tm, 1)}</td>
       <td class="mono">${nb(p.deltaTm, 1)}</td>
+      <td class="mono">${dgLisible(p.dgDimere)}${p.dimere3 ? ' <span class="rouge" title="l’appariement touche une extrémité 3′">3′</span>' : ''}
+        <br><span class="note">${dgLisible(Math.min(p.avant.dgEpingle, p.arriere.dgEpingle))}</span></td>
       <td class="mono">${nb(p.score, 2)}</td></tr>`).join('') +
     '</tbody></table></div>';
 }
@@ -699,8 +706,21 @@ function contenuRapport(doc: DocumentSeq) {
     source: `${doc.nom}${doc.genre === 'fas' ? ` (${doc.enrs[doc.enrIndex]?.id ?? ''})` : ''}`,
     version: VERSION,
     etabliLe: new Date(),
-    options: {...optionsCorrection(), ecretage: ($('#opt-ecreter') as HTMLInputElement).checked,
-              modifications: doc.journalEdition.length},
+    options: {
+      ...optionsCorrection(),
+      ecretage: ($('#opt-ecreter') as HTMLInputElement).checked,
+      modifications: doc.journalEdition.length,
+      // Sans ses conditions, une Tm ne se refait pas.
+      ...(etat.amorces?.resultat
+        ? {
+            'amorce nM': Number(($('#c-oligo') as HTMLInputElement).value),
+            'K+ mM': Number(($('#c-k') as HTMLInputElement).value),
+            'Tris mM': Number(($('#c-tris') as HTMLInputElement).value),
+            'Mg2+ mM': Number(($('#c-mg') as HTMLInputElement).value),
+            'dNTP mM': Number(($('#c-dntp') as HTMLInputElement).value)
+          }
+        : {})
+    },
     seq,
     correction: corr,
     composition: composition(seq),
@@ -982,7 +1002,11 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
       sondeTmMin: val('#sonde-tm-min'), sondeTmMax: val('#sonde-tm-max'),
       sondeTmOptimale: (val('#sonde-tm-min') + val('#sonde-tm-max')) / 2,
       sondeLongMin: val('#sonde-lg-min'), sondeLongMax: val('#sonde-lg-max'),
-      sondeDistanceMax: val('#sonde-dist')
+      sondeDistanceMax: val('#sonde-dist'),
+      conditions: {
+        oligoNM: val('#c-oligo'), kMM: val('#c-k'), trisMM: val('#c-tris'),
+        mgMM: val('#c-mg'), dntpMM: val('#c-dntp')
+      }
     };
     $('#resultats').innerHTML = '<p class="vide">Recherche en cours…</p>';
     const id = executeur.lancer<ResultatAmorces>('amorces/balayage', params, {

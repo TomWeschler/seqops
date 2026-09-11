@@ -192,7 +192,8 @@ test('la sonde apparaît dans le résultat quand on la demande', async ({page}) 
   await expect(page.locator('#resultats th', {hasText: 'Sonde'})).toBeVisible();
   const premiere = page.locator('#resultats tbody tr').first();
   await expect(premiere).toContainText('Tm');
-  await expect(premiere).toContainText('nt de F');
+  // Près de F OU de R : la sonde se colle à l'une des deux, c'est le contrat.
+  await expect(premiere).toContainText(/nt de [FR]/);
 });
 
 test('les codes ambigus sont ramenés à N par défaut', async ({page}) => {
@@ -423,9 +424,35 @@ test('un seuil plus exigeant trouve moins de pics doubles', async ({page}) => {
   await expect(page.locator('#bilan-doubles')).toContainText('Aucun second pic');
 });
 
+test('les conditions de réaction se règlent et changent les Tm', async ({page}) => {
+  await page.evaluate(() => {
+    let x = 23;
+    let s = '';
+    for (let i = 0; i < 1500; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
+    return window.seqops!.accepter([new File([`>cible\n${s}\n`], 'cible.fas', {type: 'text/plain'})]);
+  });
+  await page.fill('#amp-min', '150');
+  await page.fill('#amp-max', '400');
+  await page.click('#btn-amorces');
+  await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
+  // Les colonnes de structures existent : ΔG du dimère et de l'épingle.
+  await expect(page.locator('#resultats th', {hasText: 'ΔG'})).toBeVisible();
+  const avant = await page.locator('#resultats tbody tr').first().innerText();
+
+  // Beaucoup plus de magnésium : les amorces retenues ne sont plus les mêmes,
+  // parce que la fenêtre de Tm ne sélectionne plus les mêmes oligonucléotides.
+  await page.fill('#c-mg', '6');
+  await page.click('#btn-amorces');
+  await expect(page.locator('#taches .tache').first()).toContainText(/terminée|arrêtée/, {timeout: 60_000});
+  await page.waitForTimeout(300);
+  const apres = await page.locator('#resultats tbody tr').first().innerText();
+  expect(apres).not.toEqual(avant);
+});
+
 test('les réglages d’amorces sont rangés, la sonde s’éteint quand on ne la veut pas', async ({page}) => {
   await page.setInputFiles('#fichiers', cheminFasta);
-  await expect(page.locator('#p-amorces fieldset')).toHaveCount(2);
+  await expect(page.locator('#p-amorces fieldset')).toHaveCount(3);
+  await expect(page.locator('#p-amorces legend').nth(1)).toHaveText('Réaction');
   await expect(page.locator('#p-amorces legend').first()).toHaveText('Amorces');
   await expect(page.locator('#bloc-sonde')).toHaveClass(/eteint/);
   await page.check('#opt-sonde');

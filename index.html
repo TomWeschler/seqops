@@ -134,6 +134,25 @@
         </div>
       </fieldset>
 
+      <fieldset>
+        <legend>Réaction</legend>
+        <div class="reglage">
+          <span class="quoi">Amorce</span>
+          <input type="number" id="c-oligo" value="500" min="1" step="50">
+          <span class="unite" style="grid-column:span 3">nM</span>
+        </div>
+        <div class="reglage">
+          <span class="quoi">K⁺ / Tris</span>
+          <input type="number" id="c-k" value="50" min="0" step="5"><span class="tiret">/</span>
+          <input type="number" id="c-tris" value="10" min="0" step="1"><span class="unite">mM</span>
+        </div>
+        <div class="reglage">
+          <span class="quoi">Mg²⁺ / dNTP</span>
+          <input type="number" id="c-mg" value="1.5" min="0" step="0.1"><span class="tiret">/</span>
+          <input type="number" id="c-dntp" value="0.8" min="0" step="0.1"><span class="unite">mM</span>
+        </div>
+      </fieldset>
+
       <fieldset id="bloc-sonde" class="eteint">
         <legend><label class="case"><input type="checkbox" id="opt-sonde"> Sonde (qPCR)</label></legend>
         <div class="reglage">

@@ -3,7 +3,8 @@
  *  Court sur une lecture Sanger, long sur un génome bactérien — d'où son
  *  passage par le même mécanisme de tâches que le reste. */
 
-import {composition, corriger, gcGlissant, orfs, tmPlusProcheVoisin, masse} from '../core/sequence.js';
+import {composition, corriger, gcGlissant, orfs, masse} from '../core/sequence.js';
+import {tm as tmPcr} from '../core/thermo.js';
 import type {OptionsCorrection} from '../core/sequence.js';
 import type {Calcul, Contexte} from './types.js';
 
@@ -47,7 +48,7 @@ export const analyseSequence: Calcul<ParamsAnalyse, ResultatAnalyse> = {
     ctx.signaler(4, 4, 'terminé');
     return {
       seq, correction, composition: compo, gc, orfs: cadres,
-      tm: tmPlusProcheVoisin(seq, params.oligoNM ?? 500, params.selMM ?? 50),
+      tm: tmPcr(seq, {oligoNM: params.oligoNM ?? 500}),
       masse: masse(seq)
     };
   }

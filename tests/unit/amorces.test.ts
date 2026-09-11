@@ -1,7 +1,8 @@
 import {describe, expect, it} from 'vitest';
 import {balayageAmorces} from '../../src/calculs/amorces.js';
 import type {Contexte} from '../../src/calculs/types.js';
-import {complementInverse, tmPlusProcheVoisin} from '../../src/core/sequence.js';
+import {complementInverse} from '../../src/core/sequence.js';
+import {tm as tmPcr} from '../../src/core/thermo.js';
 
 /** Une séquence pseudo-aléatoire reproductible : les épreuves doivent donner
  *  le même verdict à chaque exécution. */
@@ -46,7 +47,9 @@ describe('balayage d’amorces', () => {
       // L'amorce arrière est bien lue sur le brin inverse, à sa position.
       expect(p.arriere.seq).toBe(complementInverse(seq.slice(p.arriere.debut - 1, p.arriere.fin)));
       expect(p.avant.seq).toBe(seq.slice(p.avant.debut - 1, p.avant.fin));
-      expect(p.avant.tm).toBeCloseTo(tmPlusProcheVoisin(p.avant.seq) as number, 6);
+      // La Tm est celle des conditions de réaction, pas celle d'un tube de
+      // sodium pur : c'est tout l'objet du module thermo.
+      expect(p.avant.tm).toBeCloseTo(tmPcr(p.avant.seq) as number, 6);
     }
   });
 
@@ -137,13 +140,17 @@ describe('sonde d’hydrolyse', () => {
     const commun = {seq, ampliconMin: 120, ampliconMax: 400, sonde: true, maxPaires: 40};
     const collee = balayageAmorces.executer({...commun, sondeDistanceMax: 0}, contexte());
     const large = balayageAmorces.executer({...commun, sondeDistanceMax: 60}, contexte());
+
+    // Collée veut dire collée : aucune tolérance.
     for (const {sonde: s} of collee.paires) {
       expect(Math.min(s!.distanceAvant, s!.distanceArriere)).toBe(0);
     }
-    // Desserrer la contrainte ne peut pas faire perdre de paires.
+
+    // Ce que desserrer change vraiment : ce ne sont pas les sondes retenues —
+    // le score préfère de toute façon la plus proche — mais le nombre de paires
+    // PERDUES faute de sonde dans la fenêtre. C'est là que le réglage se voit.
+    expect(large.sansSonde).toBeLessThan(collee.sansSonde);
     expect(large.paires.length).toBeGreaterThanOrEqual(collee.paires.length);
-    expect(large.paires.some((p) => Math.min(p.sonde!.distanceAvant, p.sonde!.distanceArriere) > 1))
-      .toBe(true);
   });
 
   it('écarte les paires sans sonde exploitable, et le compte', () => {
