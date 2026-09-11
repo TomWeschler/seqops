@@ -28,6 +28,10 @@ export interface VueChromato {
   /** Nombre de bases affichées. */
   readonly combien: number;
   readonly ecretage?: {debut: number; fin: number};
+  /** Base sélectionnée dans la ligne du dessous : sa colonne est marquée. */
+  readonly choisie?: number;
+  /** Quadrillage vertical à l'aplomb de chaque base. */
+  readonly quadrillage?: boolean;
 }
 
 /** La même arithmétique que le tracé, rendue en fractions : c'est la seule
@@ -102,6 +106,47 @@ export function dessiner(toile: HTMLCanvasElement, lecture: LectureAbif, vue: Vu
     }
   }
   const enY = (v: number) => margeHaut + hTrace - (v / maxi) * hTrace;
+
+  // Le quadrillage d'abord, sous les courbes : une ligne à l'aplomb de chaque
+  // base, plus marquée toutes les dix. C'est lui qui permet de rattacher une
+  // lettre à son pic sans suivre du doigt — l'espacement des pics étant
+  // irrégulier, l'œil seul se trompe.
+  if (vue.quadrillage !== false) {
+    for (let i = premiere; i <= derniere; i++) {
+      const x = Math.round(enX(pics[i] ?? 0)) + 0.5;
+      const dizaine = (i + 1) % 10 === 0;
+      ctx.strokeStyle = dizaine ? '#4a4a6a' : '#26263a';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, margeHaut - 6);
+      ctx.lineTo(x, hauteur - margeBas + 20);
+      ctx.stroke();
+    }
+    // Quelques repères horizontaux : ils donnent l'échelle des hauteurs.
+    ctx.strokeStyle = '#1c1c28';
+    for (const part of [0.25, 0.5, 0.75]) {
+      const y = Math.round(margeHaut + hTrace * part) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(8, y);
+      ctx.lineTo(largeur - 8, y);
+      ctx.stroke();
+    }
+  }
+
+  // La colonne de la base sélectionnée, marquée franchement : c'est elle qu'on
+  // s'apprête à corriger.
+  if (vue.choisie !== undefined && vue.choisie >= premiere && vue.choisie <= derniere) {
+    const x = enX(pics[vue.choisie] ?? 0);
+    const demi = Math.max(3, (largeur - 16) / Math.max(1, combien) / 2);
+    ctx.fillStyle = 'rgba(124,106,255,0.16)';
+    ctx.fillRect(x - demi, margeHaut - 6, demi * 2, hauteur - margeBas - margeHaut + 26);
+    ctx.strokeStyle = '#7c6aff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(Math.round(x) + 0.5, margeHaut - 6);
+    ctx.lineTo(Math.round(x) + 0.5, hauteur - margeBas + 20);
+    ctx.stroke();
+  }
 
   for (const base of ['A', 'C', 'G', 'T'] as const) {
     const t = traces[base];

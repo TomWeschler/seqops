@@ -140,7 +140,7 @@ test('une analyse longue peut être arrêtée', async ({page}) => {
   await page.evaluate(() => {
     let x = 3;
     let s = '';
-    for (let i = 0; i < 60000; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
+    for (let i = 0; i < 120000; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
     const f = new File([`>grande\n${s}\n`], 'grande.fas', {type: 'text/plain'});
     return window.seqops!.accepter([f]);
   });
@@ -253,12 +253,17 @@ test('chaque lettre tombe exactement sous son pic', async ({page}) => {
     const image = toile.getContext('2d')!.getImageData(0, 0, toile.width, toile.height);
 
     /** Colonne (en pixels CSS) où la courbe de cette base culmine, cherchée
-     *  autour d'une position attendue. */
+     *  autour d'une position attendue.
+     *
+     *  On ne prend pas « la première colonne la plus haute » : sur un trait
+     *  épais et anti-crénelé, ce choix penche systématiquement à gauche et
+     *  fabrique un décalage qui n'existe pas. On prend le barycentre des
+     *  colonnes du sommet, pondéré par leur hauteur — estimateur symétrique,
+     *  donc sans biais. */
     const sommet = (base: string, centreCss: number, rayon: number): number | null => {
       const cible = COULEURS[base];
       if (!cible) return null;
-      let meilleurX = null as number | null;
-      let meilleurY = Infinity;
+      const colonnes: {x: number; h: number}[] = [];
       for (let dx = -rayon; dx <= rayon; dx++) {
         const xCss = centreCss + dx;
         const xDev = Math.round(xCss * dpr);
@@ -269,19 +274,29 @@ test('chaque lettre tombe exactement sous son pic', async ({page}) => {
                          Math.abs(image.data[k + 1]! - cible[1]) < 60 &&
                          Math.abs(image.data[k + 2]! - cible[2]) < 60 &&
                          image.data[k + 3]! > 120;
-          if (proche) {
-            if (y < meilleurY) { meilleurY = y; meilleurX = xCss; }
-            break;
-          }
+          if (proche) { colonnes.push({x: xCss, h: image.height - y}); break; }
         }
       }
-      return meilleurX;
+      if (!colonnes.length) return null;
+      const sommetH = Math.max(...colonnes.map((c) => c.h));
+      const retenues = colonnes.filter((c) => c.h >= sommetH - 3);
+      const poids = retenues.reduce((s, c) => s + (c.h - (sommetH - 4)), 0);
+      if (poids <= 0) return null;
+      return retenues.reduce((s, c) => s + c.x * (c.h - (sommetH - 4)), 0) / poids;
     };
 
     const resultats: {base: string; ecart: number}[] = [];
-    for (const el of Array.from(document.querySelectorAll('#bases-ligne .b'))) {
+    // On mesure la LETTRE, pas sa case : la case va jusqu'à mi-chemin des
+    // voisines, son centre n'est pas le pic dès que l'écartement est irrégulier.
+    const cases = Array.from(document.querySelectorAll('#bases-ligne .b i'));
+    const lettreDe = (n: number) => (cases[n]?.textContent ?? '').trim();
+    for (const [rang, el] of cases.entries()) {
       const lettre = (el.textContent ?? '').trim();
       if (!'ACGT'.includes(lettre)) continue;
+      // Deux bases identiques voisines dessinent deux bosses de la même couleur
+      // qui se recouvrent : le « sommet » lu n'est plus celui d'un pic isolé.
+      // On ne mesure que ce que la méthode sait mesurer.
+      if (lettreDe(rang - 1) === lettre || lettreDe(rang + 1) === lettre) continue;
       const boite = el.getBoundingClientRect();
       const centre = boite.left + boite.width / 2 - boiteToile.left;
       const pic = sommet(lettre, centre, 12);
@@ -293,7 +308,9 @@ test('chaque lettre tombe exactement sous son pic', async ({page}) => {
   const verdict = (ecarts: {ecart: number}[]) => {
     expect(ecarts.length).toBeGreaterThan(20);
     const moyen = ecarts.reduce((s, e) => s + e.ecart, 0) / ecarts.length;
-    // Deux pixels : l'épaisseur du trait, pas un décalage.
+    // Le sommet lu dans les pixels est celui d'un trait épais et anti-crénelé :
+    // il ne tombera jamais exactement sur le centre de la lettre. Ce seuil dit
+    // « pas de décalage visible » ; la géométrie exacte est vérifiée plus bas.
     expect(moyen).toBeLessThan(2);
     expect(Math.max(...ecarts.map((e) => e.ecart))).toBeLessThan(4);
   };
@@ -305,6 +322,36 @@ test('chaque lettre tombe exactement sous son pic', async ({page}) => {
   await page.setViewportSize({width: 900, height: 900});
   await page.waitForTimeout(400);
   verdict(await mesurer());
+
+  // La mesure par les pixels bute sur l'épaisseur du trait et son
+  // anti-crénelage : elle ne descendra pas sous ~1,5 px, quoi qu'on fasse. On
+  // vérifie donc aussi la géométrie elle-même, en comparant la lettre à la
+  // position que le tracé DONNE au pic — là, l'écart doit être nul à un
+  // arrondi près.
+  const geometrie = await page.evaluate(() => {
+    const doc = window.seqops!.etat.docs[0]!;
+    const vue = window.seqops!.etat.vue;
+    const toile = document.querySelector('canvas') as HTMLCanvasElement;
+    const L = toile.clientWidth;
+    const pics = doc.abif!.pics;
+    const premiere = vue.premiere;
+    const combien = Math.min(vue.combien, pics.length - premiere);
+    const derniere = premiere + combien - 1;
+    const xDebut = pics[premiere]!;
+    const etendue = Math.max(1, pics[derniere]! - xDebut);
+    const enX = (e: number) => ((e - xDebut) / etendue) * (L - 16) + 8;
+    // Origine du repère du tracé : le bord de 1 px n'en fait pas partie.
+    const origine = toile.getBoundingClientRect().left + 1;
+    const ecarts: number[] = [];
+    for (const el of Array.from(document.querySelectorAll('#bases-ligne .b i'))) {
+      const i = Number((el.parentElement as HTMLElement).dataset.base);
+      const r = el.getBoundingClientRect();
+      ecarts.push(Math.abs(r.left + r.width / 2 - origine - enX(pics[i]!)));
+    }
+    return ecarts;
+  });
+  expect(geometrie.length).toBeGreaterThan(20);
+  expect(Math.max(...geometrie)).toBeLessThan(1);
 });
 
 test('la prochaine ambiguïté se trouve, se propose et se corrige', async ({page}) => {

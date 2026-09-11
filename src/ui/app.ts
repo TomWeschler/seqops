@@ -166,7 +166,8 @@ function rendreMeta(doc: DocumentSeq): void {
       ? a.qualites.reduce((s, v) => s + v, 0) / a.qualites.length : 0;
     cases.push(['Échantillon', ech(a.echantillon || '—'), `${ech(a.modele || a.machine || 'appareil inconnu')}`]);
     cases.push(['Bases lues', nb(a.bases.length), a.corrige ? 'appel corrigé (PBAS.2)' : 'appel du logiciel']);
-    cases.push(['Qualité moyenne', q ? nb(q, 1) : '—', 'PHRED, lecture entière']);
+    cases.push(['Qualité moyenne', q ? nb(q, 1) : '—',
+                a.qualites.length ? 'PHRED, lecture entière' : 'ce fichier ne porte pas de qualités']);
     if (doc.ecretage) {
       cases.push(['Après écrêtage', nb(doc.ecretage.fin - doc.ecretage.debut),
                   `−${doc.ecretage.retireDebut} / −${doc.ecretage.retireFin} bases, Q̄ ${nb(doc.ecretage.qualiteMoyenne, 1)}`]);
@@ -180,6 +181,17 @@ function rendreMeta(doc: DocumentSeq): void {
   }
   $('#meta').innerHTML = cases.map(([l, v, s]) =>
     `<div class="kpi"><div class="klbl">${l}</div><div class="kval">${v}</div><div class="ksub">${s}</div></div>`).join('');
+
+  const caseEcretage = $('#opt-ecreter') as HTMLInputElement;
+  const sansQualites = doc.genre === 'ab1' && (doc.abif?.qualites.length ?? 0) === 0;
+  caseEcretage.disabled = sansQualites;
+  const etiquette = caseEcretage.closest('label');
+  if (etiquette) {
+    etiquette.title = sansQualites
+      ? 'Ce fichier ne porte pas de qualités PHRED : il n’y a rien à écrêter.'
+      : '';
+    etiquette.classList.toggle('eteint', sansQualites);
+  }
 
   const boite = $('#chromato-boite');
   const aTrace = doc.genre === 'ab1' && (doc.abif?.pics.length ?? 0) > 0;
@@ -198,6 +210,8 @@ function rendreChromato(doc: DocumentSeq): void {
   const marquer = ($('#voir-ecrete') as HTMLInputElement).checked;
   dessiner($('#chromato') as HTMLCanvasElement, doc.abif, {
     premiere: etat.vue.premiere, combien: etat.vue.combien,
+    quadrillage: ($('#voir-quadrillage') as HTMLInputElement).checked,
+    ...(choisie >= 0 ? {choisie} : {}),
     ...(marquer && doc.ecretage ? {ecretage: {debut: doc.ecretage.debut, fin: doc.ecretage.fin}} : {})
   });
 }
@@ -233,10 +247,17 @@ function rendreLigneBases(doc: DocumentSeq): void {
     if (i === choisie) classes.push('choisie');
     const q = doc.abif.qualites[i];
     const titre = `position ${i + 1}${q === undefined ? '' : ` · qualité ${q}`}`;
+    // La case va jusqu'à mi-chemin des voisines — c'est la zone cliquable —
+    // mais la lettre, elle, est posée sur le pic. Les deux ne coïncident pas
+    // quand l'écartement est irrégulier, et il l'est toujours : centrer la
+    // lettre dans sa case la décalait de plusieurs pixels.
+    const dansLaCase = place.largeur > 0
+      ? ((place.centre - place.gauche) / place.largeur) * 100
+      : 50;
     morceaux.push(
       `<span class="${classes.join(' ')}" data-base="${i}" title="${titre}"` +
       ` style="left:${(place.gauche * 100).toFixed(4)}%;width:${(place.largeur * 100).toFixed(4)}%">` +
-      `${ech(b)}</span>`);
+      `<i style="left:${dansLaCase.toFixed(3)}%">${ech(b)}</i></span>`);
   }
   ligne.innerHTML = morceaux.join('');
   rendrePalette(doc);
@@ -679,10 +700,12 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
     const doc = docActif();
     if (doc) rendreChromato(doc);
   });
-  $('#voir-ecrete').addEventListener('change', () => {
-    const doc = docActif();
-    if (doc) rendreChromato(doc);
-  });
+  for (const id of ['#voir-ecrete', '#voir-quadrillage']) {
+    $(id).addEventListener('change', () => {
+      const doc = docActif();
+      if (doc) rendreChromato(doc);
+    });
+  }
 
   // La ligne de bases : cliquer choisit, la palette corrige, le clavier va vite.
   $('#bases-ligne').addEventListener('click', (e) => {
@@ -690,7 +713,7 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
     const doc = docActif();
     if (!doc || cible === undefined) return;
     choisie = choisie === Number(cible) ? -1 : Number(cible);
-    rendreLigneBases(doc);
+    rendreChromato(doc);            // la colonne choisie se marque dans le tracé
     $('#bases-ligne').focus();
   });
   $('#palette').addEventListener('click', (e) => {
@@ -716,7 +739,7 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
       rendreMeta(doc);
       return;
     }
-    if (ev.key === 'Escape') { choisie = -1; rendreLigneBases(doc); return; }
+    if (ev.key === 'Escape') { choisie = -1; rendreChromato(doc); return; }
     const lettre = ev.key.toUpperCase();
     if (choisie >= 0 && /^[ACGTRYSWKMBDHVN]$/.test(lettre)) {
       ev.preventDefault();

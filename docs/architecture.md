@@ -120,10 +120,21 @@ Python et C. Trois voies, dans l'ordre de préférence.
 
 ## Ce qui reste à éprouver
 
-- **Un vrai `.ab1`.** Le lecteur est éprouvé sur des fichiers de synthèse
-  conformes au format ; il faut le confronter à des fichiers de vos
-  séquenceurs, de plusieurs chimies. C'est la première chose à faire avec un
-  fichier réel en main.
+- **Un vrai `.ab1` : fait, une fois.** Le lecteur a été confronté à un fichier
+  d'AB 3730xl (1 659 bases, appel corrigé PBAS.2, ordre des canaux GATC,
+  21 560 points par trace). Ce qui en est ressorti :
+  - l'ordre des canaux annoncé par `FWO_` est bien le bon — vérifié en
+    comparant, base par base, la lettre appelée au canal dominant : 85 %
+    d'accord, le reste s'expliquant par les pics qui se chevauchent ;
+  - **ce fichier ne porte aucune qualité PHRED** (pas d'entrée `PCON`).
+    L'écrêtage n'a donc rien à écrêter : la case est désormais désactivée et
+    l'interface le dit, au lieu de rester cochée pour rien ;
+  - l'écartement des pics y va de 6 à 26 échantillons pour une moyenne de 13.
+    C'est cette irrégularité qui a révélé le défaut d'alignement de la ligne de
+    bases ; le fabricant de chromatogrammes de synthèse des épreuves la
+    reproduit maintenant.
+  Restent à éprouver : d'autres chimies, d'autres appareils, et des fichiers
+  porteurs de qualités.
 - **Le poste d'entreprise lui-même** : proxy, politique de sécurité du
   navigateur, taille des fichiers ouverts, version du navigateur installée.
 - **La comparaison des chiffres** avec l'outil que le laboratoire utilise

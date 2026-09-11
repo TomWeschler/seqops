@@ -106,7 +106,16 @@ export function chromatogrammeJouet(bases: string, qualites?: number[]): ArrayBu
   const pas = 12;
   const n = bases.length;
   const q = qualites ?? bases.split('').map((_, i) => (i < 15 || i > n - 15 ? 8 : 55));
-  const pics = bases.split('').map((_, i) => 20 + i * pas);
+  // Les pics d'un vrai séquenceur ne sont pas régulièrement espacés : sur le
+  // fichier de référence qui a servi à éprouver tout ceci, l'écart va de 6 à 26
+  // échantillons pour une moyenne de 13. Une fixture régulière laisserait
+  // passer un défaut d'alignement que la réalité révélerait aussitôt.
+  let graine = 12345;
+  const pics = bases.split('').map((_, i) => {
+    graine = (graine * 1103515245 + 12345) & 0x7fffffff;
+    const jeu = i === 0 ? 0 : ((graine >>> 16) % 7) - 3;      // −3 à +3
+    return 20 + i * pas + jeu;
+  });
   const longueurTrace = 20 + n * pas + 20;
   const traces: Record<string, number[]> = {A: [], C: [], G: [], T: []};
   for (const b of ['A', 'C', 'G', 'T']) traces[b] = new Array(longueurTrace).fill(0);
