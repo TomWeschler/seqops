@@ -55,6 +55,10 @@
       <p class="note">Cliquez une base pour la corriger, ou tapez directement A, C, G, T, N.
         Les flèches ← → passent à la voisine. Les bases corrigées à la main sont soulignées.</p>
     </div>
+    <div class="barre">
+      <button id="btn-ambiguite">Prochaine ambiguïté ›</button>
+    </div>
+    <div id="ambiguite" class="ambiguite" hidden></div>
   </section>
 
   <section id="p-sequence" hidden>
@@ -62,17 +66,13 @@
     <div class="options">
       <label class="case"><input type="checkbox" id="opt-uracile" checked> U → T</label>
       <label class="case"><input type="checkbox" id="opt-lacunes" checked> Retirer les lacunes</label>
-      <label class="case"><input type="checkbox" id="opt-ambigus"> Ambigus → N</label>
+      <label class="case"><input type="checkbox" id="opt-ambigus" checked> Ambigus → N</label>
       <label class="case"><input type="checkbox" id="opt-invalides" checked> Retirer les invalides</label>
       <label class="case"><input type="checkbox" id="opt-ecreter" checked> Écrêter par la qualité (.ab1)</label>
     </div>
     <div id="stats" class="kpis"></div>
     <div id="alerte-sequence"></div>
     <div id="seqvue" class="seqvue"></div>
-    <div class="barre">
-      <button id="btn-ambiguite">Prochaine ambiguïté ›</button>
-    </div>
-    <div id="ambiguite" class="ambiguite" hidden></div>
     <div class="barre">
       <button id="btn-copier">Copier</button>
       <button id="btn-fasta">Enregistrer le .fas</button>

@@ -189,6 +189,11 @@ test('la sonde apparaît dans le résultat quand on la demande', async ({page}) 
   await expect(premiere).toContainText('nt de F');
 });
 
+test('les codes ambigus sont ramenés à N par défaut', async ({page}) => {
+  await page.setInputFiles('#fichiers', cheminFasta);
+  await expect(page.locator('#opt-ambigus')).toBeChecked();
+});
+
 test('chaque analyse a sa section', async ({page}) => {
   await page.setInputFiles('#fichiers', cheminFasta);
   await expect(page.locator('#p-analyse h2')).toHaveText('Analyse de la séquence');
@@ -233,6 +238,11 @@ test('les bases s’affichent et se corrigent sous le chromatogramme', async ({p
 
 test('la prochaine ambiguïté se trouve, se propose et se corrige', async ({page}) => {
   await page.setInputFiles('#fichiers', cheminAmbigu);
+
+  // Le bouton est dans « Lecture », avec le chromatogramme qu'il déplace, et
+  // nulle part ailleurs.
+  await expect(page.locator('#p-lecture #btn-ambiguite')).toBeVisible();
+  await expect(page.locator('#p-sequence #btn-ambiguite')).toHaveCount(0);
 
   // L'anomalie est annoncée en rouge avant même qu'on la cherche.
   await expect(page.locator('#alerte-sequence .alerte')).toContainText('ambiguës');

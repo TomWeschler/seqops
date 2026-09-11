@@ -18,7 +18,8 @@ sur un poste d'entreprise.
 | Lire un `.ab1` | Bases, qualités PHRED, pics, quatre traces, échantillon, appareil, date. Le chromatogramme est dessiné, zoomable, avec la qualité base par base. |
 | Écrêter | Méthode de Mott modifiée (celle de phred et de sangeranalyseR) : les extrémités médiocres sont coupées, jamais cachées. |
 | Lire et écrire un `.fas` | Plusieurs enregistrements, aller-retour sans perte, modification d'un segment, réécriture du fichier. |
-| Corriger | Espaces, numérotation, casse, U d'ARN, lacunes, codes IUPAC, caractères invalides — **chaque intervention est journalisée**. |
+| Corriger | Espaces, numérotation, casse, U d'ARN, lacunes, caractères invalides, et codes IUPAC ramenés à N par défaut — **chaque intervention est journalisée**, code d'origine compris. |
+| Trancher les ambiguïtés | « Prochaine ambiguïté › » amène sur la position dans le chromatogramme, propose la base du pic dominant avec son rapport au second, et corrige base à base. |
 | Analyser | Composition, GC, biais, GC glissant, Tm (Wallace, GC %, plus proche voisin SantaLucia 1998), masse, cadres ouverts, motifs IUPAC. |
 | Chercher des amorces | Balayage exhaustif des couples possibles, avec Tm, GC, pince GC en 3', répétitions et dimères. Long, interruptible, rend un résultat partiel. |
 | Chercher une sonde | Sonde d'hydrolyse (qPCR) entre les deux amorces : Tm et longueur réglables, jamais de G en 5', brin le plus riche en C, placée au plus près de l'amorce avant. |

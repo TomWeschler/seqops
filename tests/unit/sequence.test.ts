@@ -26,9 +26,25 @@ describe('correction', () => {
     expect(corriger('ACxGT').journal[0]?.type).toBe('invalide');
   });
 
-  it('garde les codes ambigus par défaut : ils portent de l’information', () => {
-    expect(corriger('ACRYGT').seq).toBe('ACRYGT');
-    expect(corriger('ACRYGT', {ambigusEnN: true}).seq).toBe('ACNNGT');
+  it('ramène les codes ambigus à N par défaut, sans rien taire', () => {
+    const r = corriger('ACRYGT');
+    expect(r.seq).toBe('ACNNGT');
+    // Ce qui a été écrasé reste lisible : le code d'origine et ce qu'il désignait.
+    expect(r.journal.map((e) => e.quoi)).toEqual([
+      'code ambigu R (AG) ramené à N',
+      'code ambigu Y (CT) ramené à N'
+    ]);
+    expect(r.comptes.ambigus).toBe(2);
+  });
+
+  it('...et les conserve si on le demande explicitement', () => {
+    expect(corriger('ACRYGT', {ambigusEnN: false}).seq).toBe('ACRYGT');
+  });
+
+  it('un N reste un N : rien à convertir, mais il est compté', () => {
+    const r = corriger('ACNGT');
+    expect(r.seq).toBe('ACNGT');
+    expect(r.comptes.ambigus).toBe(1);
   });
 
   it('déclare propre une séquence propre, sans journal', () => {

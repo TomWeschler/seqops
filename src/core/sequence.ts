@@ -33,7 +33,11 @@ export interface OptionsCorrection {
   uracile?: boolean;
   /** Lacunes d'alignement (- .) retirées. */
   lacunes?: boolean;
-  /** Codes IUPAC ambigus ramenés à N. */
+  /** Codes IUPAC ambigus ramenés à N. Vrai par défaut : dans un rapport de
+   *  séquençage, un R ou un Y se recopie trop facilement comme s'il valait une
+   *  base lue. Les ramener à N dit ce qui est vrai — cette position n'est pas
+   *  tranchée — et chaque conversion reste inscrite au journal, avec le code
+   *  d'origine et ce qu'il désignait. Passer `false` les conserve tels quels. */
   ambigusEnN?: boolean;
   /** Caractères invalides retirés (sinon remplacés par N, ce qui garde les
    *  coordonnées de tout ce qui suit). */
@@ -57,7 +61,7 @@ export interface Correction {
 /** Nettoie une séquence ET rend le compte rendu de ce qui a été touché.
  *  Une correction muette est une falsification : c'est la règle du module. */
 export function corriger(brut: string, opts: OptionsCorrection = {}): Correction {
-  const o = {uracile: true, lacunes: true, ambigusEnN: false, retirerInvalides: true, ...opts};
+  const o = {uracile: true, lacunes: true, ambigusEnN: true, retirerInvalides: true, ...opts};
   const src = String(brut ?? '');
   const sortie: string[] = [];
   const journal: EntreeJournal[] = [];
