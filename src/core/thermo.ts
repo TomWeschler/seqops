@@ -198,3 +198,40 @@ export function epingle(seq: string, boucleMin = 3): Structure {
   }
   return meilleure;
 }
+
+/* ── L'autre école : la formule ajustée au sel ────────────────────────────
+   Celle d'OligoCalc, que beaucoup de laboratoires utilisent depuis vingt ans.
+   Elle ne connaît que la composition et le sodium — ni la concentration
+   d'oligonucléotide, ni l'enchaînement des bases — mais c'est précisément
+   pour ça qu'on la retrouve dans les cahiers : elle donne toujours le même
+   chiffre pour une séquence donnée, et les protocoles s'y réfèrent.
+
+   Deux branches, comme sur le site :
+     — 14 bases et plus : 100,5 + 41·(G+C)/N − 820/N + 16,6·log₁₀[Na⁺] ;
+     — moins de 14 : la règle de Wallace, corrigée du sel par rapport à 50 mM.
+
+   Elle est offerte à côté du plus proche voisin, pas à la place : sur une
+   amorce de 20 bases, les deux peuvent différer de plusieurs degrés, et il
+   vaut mieux savoir laquelle on lit. */
+
+export function tmAjusteAuSel(seq: string, naMM = 50): number | null {
+  if (!/^[ACGT]+$/.test(seq)) return null;
+  const n = seq.length;
+  const gc = (seq.match(/[GC]/g) ?? []).length;
+  const at = n - gc;
+  const na = Math.max(1e-4, naMM / 1000);
+  if (n >= 14) return 100.5 + (41 * gc) / n - 820 / n + 16.6 * Math.log10(na);
+  return at * 2 + gc * 4 - 16.6 * Math.log10(0.05) + 16.6 * Math.log10(na);
+}
+
+export type MethodeTm = 'ppv' | 'sel';
+
+/** La Tm selon la méthode choisie. Le plus proche voisin tient compte des sels
+ *  réels et de la concentration d'amorce ; l'ajustée au sel ne connaît que le
+ *  sodium. Le champ [Na⁺] de la seconde n'est donc pas l'équivalent sodium de
+ *  la première : ce sont deux conventions, et les mélanger tromperait. */
+export function tmSelon(
+  methode: MethodeTm, seq: string, conditions: Conditions = {}, naMM = 50
+): number | null {
+  return methode === 'sel' ? tmAjusteAuSel(seq, naMM) : tm(seq, conditions);
+}

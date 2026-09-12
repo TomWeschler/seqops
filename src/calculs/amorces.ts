@@ -13,10 +13,10 @@
  *  moteur est remplaçable sans toucher au reste. */
 
 import {complementInverse, composition} from '../core/sequence.js';
-import {dimere, epingle, tm as tmPcr} from '../core/thermo.js';
+import {dimere, epingle, tmSelon} from '../core/thermo.js';
+import type {Conditions, MethodeTm, Structure} from '../core/thermo.js';
 import {ampliconsParasites, sitesHybridation} from '../core/specificite.js';
 import type {AmpliconParasite} from '../core/specificite.js';
-import type {Conditions, Structure} from '../core/thermo.js';
 import type {Calcul, Contexte} from './types.js';
 
 export interface ParamsAmorces {
@@ -35,6 +35,12 @@ export interface ParamsAmorces {
    *  elles qui fixent les Tm ; les valeurs par défaut sont celles d'une PCR
    *  ordinaire, pas celles d'un tube de sodium pur. */
   readonly conditions?: Conditions;
+  /** Quelle Tm : plus proche voisin dans les conditions de la réaction, ou
+   *  formule ajustée au sel (OligoCalc). Elle sert au filtre comme à
+   *  l'affichage : les deux ne désignent pas les mêmes amorces. */
+  readonly methodeTm?: MethodeTm;
+  /** Sodium de la formule ajustée au sel, en mM. */
+  readonly naMM?: number;
   /** ΔG maximal toléré pour une épingle à cheveux, en kcal/mol (négatif). */
   readonly dgEpingleMax?: number;
   /** ΔG maximal toléré pour un dimère, et pour un dimère qui touche le 3'. */
@@ -91,6 +97,9 @@ export interface Sonde {
   readonly seq: string;
   readonly tm: number;
   readonly gc: number;
+  /** Vrai si ce brin porte au moins autant de C que de G — préférable pour une
+   *  sonde d'hydrolyse, mais le brin est d'abord imposé par l'amorce voisine. */
+  readonly plusDeC: boolean;
   /** ΔG du pire dimère entre la sonde et l'une des deux amorces. */
   readonly dgAvecAmorces: number;
   /** Bases entre la fin de l'amorce avant et le début de la sonde. */
@@ -164,31 +173,38 @@ function complementariteTerminale(a: string, b: string, fenetre = 6): number {
  *  passées à celle des amorces. */
 function evaluerSonde(
   seq: string, debut: number, longueur: number, p: Required<ParamsAmorces>
-): Sonde | null {
+): Sonde[] {
   const brut = seq.substr(debut, longueur);
-  if (brut.length !== longueur || !/^[ACGT]+$/.test(brut)) return null;
-  if (REPETITION.test(brut) || /G{4,}/.test(brut)) return null;
+  if (brut.length !== longueur || !/^[ACGT]+$/.test(brut)) return [];
 
-  // Le brin qui porte le plus de C ; à égalité, le brin direct.
-  const inverse = complementInverse(brut);
-  const compte = (o: string, b: string) => (o.match(new RegExp(b, 'g')) ?? []).length;
-  const candidats: {brin: '+' | '−'; oligo: string}[] =
-    compte(brut, 'C') >= compte(brut, 'G')
-      ? [{brin: '+', oligo: brut}, {brin: '−', oligo: inverse}]
-      : [{brin: '−', oligo: inverse}, {brin: '+', oligo: brut}];
-
-  for (const {brin, oligo} of candidats) {
-    if (oligo.startsWith('G')) continue;              // fluorophore éteint
+  // Les DEUX orientations sont retenues quand elles tiennent : le brin sera
+  // choisi plus tard, par l'amorce à laquelle la sonde se colle. Le sens de
+  // lecture d'une sonde d'hydrolyse n'est pas libre — elle doit s'hybrider sur
+  // le brin que l'amorce voisine libère.
+  const variantes: {brin: '+' | '−'; oligo: string}[] = [
+    {brin: '+', oligo: brut},
+    {brin: '−', oligo: complementInverse(brut)}
+  ];
+  const retenues: Sonde[] = [];
+  for (const {brin, oligo} of variantes) {
+    // Les contrôles portent sur l'oligonucléotide RÉELLEMENT commandé : un
+    // CCCC du brin direct devient un GGGG sur l'autre brin, et c'est ce GGGG
+    // qui repliera la sonde.
+    if (REPETITION.test(oligo) || /G{4,}/.test(oligo)) continue;
+    if (oligo.startsWith('G')) continue;              // le G en 5' éteint le fluorophore
     const c = composition(oligo);
     if (c.gc < 30 || c.gc > 80) continue;
-    const tm = tmPcr(oligo, p.conditions);
+    const tm = tmSelon(p.methodeTm, oligo, p.conditions, p.naMM);
     if (tm === null || tm < p.sondeTmMin || tm > p.sondeTmMax) continue;
     if (epingle(oligo).dg < p.dgEpingleMax) continue;
-    return {brin, debut: debut + 1, fin: debut + longueur, seq: oligo, tm, gc: c.gc,
-            dgAvecAmorces: 0, distanceAvant: 0, distanceArriere: 0, collee: 'F'};
+    retenues.push({brin, debut: debut + 1, fin: debut + longueur, seq: oligo, tm, gc: c.gc,
+                   plusDeC: compter(oligo, 'C') >= compter(oligo, 'G'),
+                   dgAvecAmorces: 0, distanceAvant: 0, distanceArriere: 0, collee: 'F'});
   }
-  return null;
+  return retenues;
 }
+
+const compter = (oligo: string, base: string) => (oligo.match(new RegExp(base, 'g')) ?? []).length;
 
 function evaluer(
   seq: string, debut: number, longueur: number, sens: 'F' | 'R', p: Required<ParamsAmorces>
@@ -201,7 +217,7 @@ function evaluer(
   const c = composition(oligo);
   const gc = c.gc;
   if (gc < p.gcMin || gc > p.gcMax) return null;
-  const tm = tmPcr(oligo, p.conditions);
+  const tm = tmSelon(p.methodeTm, oligo, p.conditions, p.naMM);
   if (tm === null || tm < p.tmMin || tm > p.tmMax) return null;
   const cinq = oligo.slice(-5);
   const pince = (cinq.match(/[GC]/g) ?? []).length;
@@ -229,6 +245,8 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
       ampliconMin: params.ampliconMin ?? 100, ampliconMax: params.ampliconMax ?? 1000,
       deltaTmMax: params.deltaTmMax ?? 2,
       conditions: params.conditions ?? {},
+      methodeTm: params.methodeTm ?? 'ppv',
+      naMM: params.naMM ?? 50,
       // Seuils usuels d'un dessin d'amorces : une épingle sous −3 kcal/mol tient
       // encore à 60 °C, un dimère en 3' sous −5 amorce une élongation parasite.
       dgEpingleMax: params.dgEpingleMax ?? -3,
@@ -277,8 +295,7 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
       }
       if (p.sonde) {
         for (let l = p.sondeLongMin; l <= p.sondeLongMax; l++) {
-          const s = evaluerSonde(seq, i, l, p);
-          if (s) sondes.push(s);
+          sondes.push(...evaluerSonde(seq, i, l, p));
         }
       }
     }
@@ -416,11 +433,20 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
           // donne un signal plus tardif, c'est tout l'enjeu du réglage.
           const proche = Math.min(distanceAvant, distanceArriere);
           if (proche > p.sondeDistanceMax) continue;
-          const score = Math.abs(s.tm - p.sondeTmOptimale) + proche;
+
+          // LE BRIN EST IMPOSÉ PAR L'AMORCE VOISINE. Collée à F, la sonde
+          // s'hybride sur le brin + ; collée à R, sur le brin −. C'est le brin
+          // que l'élongation de l'amorce voisine vient parcourir, et donc celui
+          // que la polymérase hydrolysera.
+          const collee: 'F' | 'R' = distanceAvant <= distanceArriere ? 'F' : 'R';
+          const brinVoulu = collee === 'F' ? '+' : '−';
+          if (s.brin !== brinVoulu) continue;
+
+          // À égalité par ailleurs, on préfère le brin le plus riche en C.
+          const score = Math.abs(s.tm - p.sondeTmOptimale) + proche + (s.plusDeC ? 0 : 0.5);
           if (score < meilleurScore) {
             meilleurScore = score;
-            meilleure = {...s, distanceAvant, distanceArriere,
-                         collee: distanceAvant <= distanceArriere ? 'F' : 'R'};
+            meilleure = {...s, distanceAvant, distanceArriere, collee};
           }
         }
         if (!meilleure) { sansSonde++; continue; }

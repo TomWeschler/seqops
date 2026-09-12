@@ -137,9 +137,21 @@
       <fieldset>
         <legend>Réaction</legend>
         <div class="reglage">
+          <span class="quoi">Méthode de Tm</span>
+          <select id="tm-methode" style="grid-column:span 4">
+            <option value="ppv" selected>Plus proche voisin — sels de la réaction</option>
+            <option value="sel">Ajustée au sel — formule d’OligoCalc</option>
+          </select>
+        </div>
+        <div class="reglage">
           <span class="quoi">Amorce</span>
           <input type="number" id="c-oligo" value="500" min="1" step="50">
           <span class="unite" style="grid-column:span 3">nM</span>
+        </div>
+        <div class="reglage" id="reglage-na" hidden>
+          <span class="quoi">Na⁺ (OligoCalc)</span>
+          <input type="number" id="c-na" value="50" min="1" step="10">
+          <span class="unite" style="grid-column:span 3">mM</span>
         </div>
         <div class="reglage">
           <span class="quoi">K⁺ / Tris</span>

@@ -142,7 +142,11 @@ footer a{color:var(--text-mid)}
 .reglages{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:.8rem}
 fieldset{border:1px solid var(--border2);border-radius:8px;padding:.7rem .9rem .9rem;
          background:var(--surface2)}
-fieldset.eteint,label.eteint{opacity:.5}
+fieldset.eteint,label.eteint,.reglage.eteint{opacity:.5}
+.reglage.eteint input{pointer-events:none}
+select{background:var(--bg);color:var(--text);border:1px solid var(--border2);
+       border-radius:6px;padding:.35rem .5rem;font:.78rem var(--mono);width:100%}
+select:focus{outline:none;border-color:var(--accent)}
 fieldset.eteint .reglage{pointer-events:none}
 legend{font:700 .64rem/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
        color:var(--accent);padding:0 .4rem}
@@ -170,3 +174,7 @@ legend .case{font:inherit;letter-spacing:inherit;text-transform:inherit;color:in
 #resultats td.mono .note,#analyse-res td .note{font-size:.76rem}
 #resultats th,#analyse-res th{font-size:.66rem}
 #resultats tbody tr:hover{background:var(--surface2)}
+#resultats input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;cursor:pointer}
+/* Ce qu'on lit sur le brin direct, sous ce qu'on commande : même famille, mais
+   visiblement secondaire, pour qu'on ne commande pas l'un pour l'autre. */
+.complement{color:var(--text-dim);font-style:italic}

@@ -5,7 +5,7 @@
  *  poste. */
 import {expect, test} from '@playwright/test';
 import type {Page} from '@playwright/test';
-import {mkdtempSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {chromatogrammeAvecHeterozygotes, chromatogrammeJouet} from '../unit/_abif.js';
@@ -452,6 +452,43 @@ test('les conditions de réaction se règlent et changent les Tm', async ({page}
   await page.waitForTimeout(300);
   const apres = await page.locator('#resultats tbody tr').first().innerText();
   expect(apres).not.toEqual(avant);
+});
+
+test('les amorces s’exportent en classeur, tout ou ligne à ligne', async ({page}) => {
+  await page.evaluate(() => {
+    let x = 53;
+    let s = '';
+    for (let i = 0; i < 1500; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
+    return window.seqops!.accepter([new File([`>cible\n${s}\n`], 'cible.fas', {type: 'text/plain'})]);
+  });
+  await page.fill('#amp-min', '150');
+  await page.fill('#amp-max', '400');
+  await page.click('#btn-amorces');
+  await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
+
+  // Tout est coché au départ, et le bilan compte les oligonucléotides, pas les paires.
+  await expect(page.locator('#bilan-selection')).toContainText('oligonucléotides à commander');
+  const lignes = await page.locator('#resultats .choix').count();
+  expect(lignes).toBeGreaterThan(1);
+
+  // Tout décocher désarme l'export ; une seule ligne le réarme.
+  await page.uncheck('#tout-cocher');
+  await expect(page.locator('#bilan-selection')).toContainText('Aucune paire');
+  await expect(page.locator('#btn-xlsx')).toBeDisabled();
+  await page.locator('#resultats .choix').first().check();
+  await expect(page.locator('#bilan-selection')).toContainText('1 paire');
+  await expect(page.locator('#btn-xlsx')).toBeEnabled();
+
+  const telechargement = page.waitForEvent('download');
+  await page.click('#btn-xlsx');
+  const fichier = await telechargement;
+  expect(fichier.suggestedFilename()).toMatch(/_amorces\.xlsx$/);
+  const chemin = join(dossier, 'export.xlsx');
+  await fichier.saveAs(chemin);
+  // Un vrai ZIP, pas un fichier vide déguisé : la signature PK, et la taille.
+  const octets = readFileSync(chemin);
+  expect(octets.length).toBeGreaterThan(1000);
+  expect(octets.subarray(0, 2).toString()).toBe('PK');
 });
 
 test('la spécificité est vérifiée sur les autres fichiers ouverts', async ({page}) => {

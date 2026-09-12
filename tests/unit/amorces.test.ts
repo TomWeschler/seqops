@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest';
 import {balayageAmorces} from '../../src/calculs/amorces.js';
 import type {Contexte} from '../../src/calculs/types.js';
 import {complementInverse} from '../../src/core/sequence.js';
-import {tm as tmPcr} from '../../src/core/thermo.js';
+import {tm as tmPcr, tmAjusteAuSel} from '../../src/core/thermo.js';
 
 /** Une séquence pseudo-aléatoire reproductible : les épreuves doivent donner
  *  le même verdict à chaque exécution. */
@@ -120,6 +120,7 @@ describe('sonde d’hydrolyse', () => {
       // Elle est bien lue sur le brin qu'elle annonce.
       const surLeDirect = seq.slice(s!.debut - 1, s!.fin);
       expect(s!.seq).toBe(s!.brin === '+' ? surLeDirect : complementInverse(surLeDirect));
+      expect(s!.seq.startsWith('G')).toBe(false);
     }
   });
 
@@ -133,6 +134,20 @@ describe('sonde d’hydrolyse', () => {
     for (const {sonde: s} of avecSonde.paires) {
       expect(Math.min(s!.distanceAvant, s!.distanceArriere)).toBeLessThanOrEqual(1);
       expect(s!.collee).toBe(s!.distanceAvant <= s!.distanceArriere ? 'F' : 'R');
+    }
+  });
+
+  it('le brin de la sonde suit l’amorce à laquelle elle est collée', () => {
+    // Collée à F → brin + ; collée à R → brin −. C'est le brin que
+    // l'élongation de l'amorce voisine vient parcourir.
+    expect(avecSonde.paires.length).toBeGreaterThan(0);
+    for (const {sonde: s} of avecSonde.paires) {
+      expect(s!.brin).toBe(s!.collee === 'F' ? '+' : '−');
+    }
+    // La séquence rendue est bien celle de ce brin-là, pas de l'autre.
+    for (const {sonde: s} of avecSonde.paires) {
+      const surLeDirect = seq.slice(s!.debut - 1, s!.fin);
+      expect(s!.seq).toBe(s!.brin === '+' ? surLeDirect : complementInverse(surLeDirect));
     }
   });
 
@@ -214,5 +229,35 @@ describe('spécificité', () => {
        autresSequences: [{nom: 'vecteur', seq: sequence(3000, 999)}]}, contexte());
     expect(r.paires.length).toBeGreaterThan(0);
     expect(r.paires.every((p) => p.parasites.length === 0)).toBe(true);
+  });
+});
+
+
+describe('méthode de Tm', () => {
+  const seq = sequence(1200, 77);
+
+  it('la formule ajustée au sel ne retient pas les mêmes amorces', () => {
+    const commun = {seq, ampliconMin: 150, ampliconMax: 500, maxPaires: 10};
+    const ppv = balayageAmorces.executer({...commun, methodeTm: 'ppv' as const}, contexte());
+    const sel = balayageAmorces.executer({...commun, methodeTm: 'sel' as const, naMM: 50}, contexte());
+    expect(ppv.paires.length).toBeGreaterThan(0);
+    expect(sel.paires.length).toBeGreaterThan(0);
+    // Les Tm rendues sont bien celles de la méthode demandée.
+    for (const p of sel.paires) {
+      expect(p.avant.tm).toBeCloseTo(tmAjusteAuSel(p.avant.seq, 50) as number, 6);
+    }
+    for (const p of ppv.paires) {
+      expect(p.avant.tm).toBeCloseTo(tmPcr(p.avant.seq) as number, 6);
+    }
+  });
+
+  it('le sodium de la formule ajustée compte', () => {
+    const commun = {seq, ampliconMin: 150, ampliconMax: 500, maxPaires: 10,
+                    methodeTm: 'sel' as const};
+    const bas = balayageAmorces.executer({...commun, naMM: 20}, contexte());
+    const haut = balayageAmorces.executer({...commun, naMM: 200}, contexte());
+    const premiere = (r: typeof bas) => r.paires[0]?.avant.seq ?? '';
+    // À sodium différent, la fenêtre de Tm ne sélectionne pas les mêmes.
+    expect(premiere(bas)).not.toBe(premiere(haut));
   });
 });

@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest';
-import {CONDITIONS_PCR, dg37, dimere, epingle, equivalentSodium, tm} from '../../src/core/thermo.js';
+import {CONDITIONS_PCR, dg37, dimere, epingle, equivalentSodium, tm, tmAjusteAuSel, tmSelon}
+  from '../../src/core/thermo.js';
 import {tmPlusProcheVoisin} from '../../src/core/sequence.js';
 
 const AMORCE = 'ACGTCAGGTCTTTCACCAGT';
@@ -88,5 +89,43 @@ describe('épingles à cheveux', () => {
     const gc = epingle('GGGGGGTTTTCCCCCC').dg;
     const at = epingle('AAAAAATTTTTTTTTT').dg;
     expect(gc).toBeLessThan(at);
+  });
+});
+
+describe('Tm ajustée au sel (OligoCalc)', () => {
+  it('suit la formule des oligonucléotides de 14 bases et plus', () => {
+    // 100,5 + 41·GC/N − 820/N + 16,6·log₁₀(0,05), vérifié à la main.
+    const seq = 'ACGTCAGGTCTTTCACCAGT';                    // 20 nt, 10 GC
+    const attendu = 100.5 + (41 * 10) / 20 - 820 / 20 + 16.6 * Math.log10(0.05);
+    expect(tmAjusteAuSel(seq, 50)).toBeCloseTo(attendu, 6);
+  });
+
+  it('bascule sur la règle de Wallace corrigée en dessous de 14 bases', () => {
+    const court = 'ACGTACGTACGT';                          // 12 nt, 6 GC
+    const attendu = 6 * 2 + 6 * 4 - 16.6 * Math.log10(0.05) + 16.6 * Math.log10(0.05);
+    expect(tmAjusteAuSel(court, 50)).toBeCloseTo(attendu, 6);
+    // À 50 mM, les deux termes de sel s'annulent : on retombe sur Wallace.
+    expect(tmAjusteAuSel(court, 50)).toBeCloseTo(36, 6);
+  });
+
+  it('plus de sodium, Tm plus haute', () => {
+    const seq = 'ACGTCAGGTCTTTCACCAGT';
+    expect(tmAjusteAuSel(seq, 200) as number).toBeGreaterThan(tmAjusteAuSel(seq, 50) as number);
+  });
+
+  it('refuse une séquence ambiguë', () => {
+    expect(tmAjusteAuSel('ACGTNACGTACGTAC')).toBeNull();
+  });
+
+  it('les deux méthodes se choisissent, et ne disent pas la même chose', () => {
+    const seq = 'ACGTCAGGTCTTTCACCAGT';
+    const ppv = tmSelon('ppv', seq) as number;
+    const sel = tmSelon('sel', seq, {}, 50) as number;
+    expect(ppv).not.toBeCloseTo(sel, 1);
+    // Chacune reste dans un domaine plausible pour une amorce de 20 bases.
+    for (const v of [ppv, sel]) {
+      expect(v).toBeGreaterThan(40);
+      expect(v).toBeLessThan(75);
+    }
   });
 });

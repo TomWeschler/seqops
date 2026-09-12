@@ -8,9 +8,12 @@ import {ecreterMott, lireAbif, picLePlusHaut, picsDoubles, zoneExploitable, Erre
 import type {Ecretage, LectureAbif, PicDouble} from '../core/abif.js';
 import {ecrireFasta, lireFasta, remplacerSegment, remplacerSequence} from '../core/fasta.js';
 import type {Enregistrement} from '../core/fasta.js';
-import {composition, corriger, prochaineAmbiguite, IUPAC} from '../core/sequence.js';
+import {complementInverse, composition, corriger, prochaineAmbiguite, IUPAC}
+  from '../core/sequence.js';
 import type {Correction, OptionsCorrection} from '../core/sequence.js';
 import {rapportHtml, rapportTexte} from '../core/rapport.js';
+import {classeurXlsx} from '../core/xlsx.js';
+import type {Cellule} from '../core/xlsx.js';
 import type {ResultatAmorces, Sonde} from '../calculs/amorces.js';
 import type {ResultatAnalyse} from '../calculs/analyse.js';
 import {ExecuteurLocal} from '../jobs/executeur-local.js';
@@ -524,8 +527,13 @@ function rendreAmorces(r: ResultatAmorces): void {
   // Un site, c'est ce qu'on veut ; deux, c'est un problème, et ça se voit.
   const sitesLisible = (n: number) => (n === 1 ? '1' : `<span class="rouge">${nb(n)}</span>`);
   const avecSonde = r.paires.some((p) => p.sonde);
+  // Ce qu'on commande, et en dessous ce qu'on lit sur le brin direct : les deux
+  // servent, et les confondre fait commander l'oligonucléotide à l'envers.
+  const complement = (oligo: string) =>
+    `<br><span class="note complement">sur le brin + : ${ech(complementInverse(oligo))}</span>`;
   const celluleSonde = (s?: Sonde) => s
-    ? `<td class="mono">${ech(s.seq)}<br><span class="note">brin ${s.brin} · ${nb(s.debut)}..${nb(s.fin)}
+    ? `<td class="mono">${ech(s.seq)}${s.brin === '−' ? complement(s.seq) : ''}
+       <br><span class="note">brin ${s.brin} · ${nb(s.debut)}..${nb(s.fin)}
        · Tm ${nb(s.tm, 1)} °C · GC ${nb(s.gc, 0)} %<br>
        ${s.collee === 'F'
          ? `à ${nb(s.distanceAvant)} nt de F`
@@ -539,15 +547,23 @@ function rendreAmorces(r: ResultatAmorces): void {
       r.ecarteesDimere ? ` ; ${nb(r.ecarteesDimere)} paires écartées pour dimère trop stable` : ''}${
       r.ecarteesSpecificite ? ` ; ${nb(r.ecarteesSpecificite)} écartées pour manque de spécificité` : ''}${
       avecSonde ? ` ; ${nb(r.candidatsSonde)} sondes candidates recensées, ${nb(r.sansSonde)} paires écartées faute de sonde` : ''}.</p>
-    <div class="tbl"><table><thead><tr><th>#</th><th>Amorce avant</th><th>Amorce arrière</th>
+    <div class="barre" style="margin-bottom:.4rem">
+      <button id="btn-xlsx" class="primary">Exporter la sélection (.xlsx)</button>
+      <span class="note" id="bilan-selection"></span>
+    </div>
+    <div class="tbl"><table><thead><tr>
+    <th><input type="checkbox" id="tout-cocher" title="Tout sélectionner" checked></th>
+    <th>#</th><th>Amorce avant</th><th>Amorce arrière</th>
     ${avecSonde ? '<th>Sonde</th>' : ''}
     <th>Amplicon</th><th>Tm F/R</th><th>ΔTm</th><th title="Énergie libre des structures, en kcal/mol : dimère des deux amorces, puis la pire épingle à cheveux. Plus c’est négatif, plus la structure tient.">ΔG dim./épin.</th>
     <th title="Sites d’hybridation de chaque amorce sur toutes les séquences ouvertes. 1 / 1, c’est ce qu’on veut.">Sites</th>
     <th>Score</th></tr></thead><tbody>` +
     r.paires.map((p, i) => `<tr>
+      <td><input type="checkbox" class="choix" data-paire="${i}" checked></td>
       <td class="mono">${i + 1}</td>
       <td class="mono">${ech(p.avant.seq)}<br><span class="note">${nb(p.avant.debut)}..${nb(p.avant.fin)} · GC ${nb(p.avant.gc, 0)} %</span></td>
-      <td class="mono">${ech(p.arriere.seq)}<br><span class="note">${nb(p.arriere.debut)}..${nb(p.arriere.fin)} · GC ${nb(p.arriere.gc, 0)} %</span></td>
+      <td class="mono">${ech(p.arriere.seq)}${complement(p.arriere.seq)}
+        <br><span class="note">${nb(p.arriere.debut)}..${nb(p.arriere.fin)} · GC ${nb(p.arriere.gc, 0)} %</span></td>
       ${avecSonde ? celluleSonde(p.sonde) : ''}
       <td class="mono">${nb(p.amplicon)} nt</td>
       <td class="mono">${nb(p.avant.tm, 1)} / ${nb(p.arriere.tm, 1)}</td>
@@ -561,6 +577,47 @@ function rendreAmorces(r: ResultatAmorces): void {
           : ''}</td>
       <td class="mono">${nb(p.score, 2)}</td></tr>`).join('') +
     '</tbody></table></div>';
+
+  brancherSelection(r);
+}
+
+/** Cases à cocher, bilan, et export. Rebranché à chaque rendu : le tableau est
+ *  reconstruit entièrement, les écouteurs partent avec lui. */
+function brancherSelection(r: ResultatAmorces): void {
+  const box = $('#resultats');
+  const cases = () => Array.from(box.querySelectorAll<HTMLInputElement>('.choix'));
+  const choisies = () => cases().filter((c) => c.checked).map((c) => Number(c.dataset.paire));
+
+  const majBilan = () => {
+    const n = choisies().length;
+    const oligos = choisies().reduce((s, i) => s + (r.paires[i]?.sonde ? 3 : 2), 0);
+    $('#bilan-selection').textContent = n
+      ? `${nb(n)} paire${n > 1 ? 's' : ''} — ${nb(oligos)} oligonucléotides à commander`
+      : 'Aucune paire sélectionnée.';
+    ($('#btn-xlsx') as HTMLButtonElement).disabled = n === 0;
+    const tout = $('#tout-cocher') as HTMLInputElement;
+    tout.checked = n === cases().length && n > 0;
+    tout.indeterminate = n > 0 && n < cases().length;
+  };
+
+  $('#tout-cocher').addEventListener('change', (e) => {
+    const coche = (e.target as HTMLInputElement).checked;
+    for (const c of cases()) c.checked = coche;
+    majBilan();
+  });
+  box.addEventListener('change', (e) => {
+    if ((e.target as HTMLElement).classList.contains('choix')) majBilan();
+  });
+  $('#btn-xlsx').addEventListener('click', () => {
+    const doc = docActif();
+    const liste = choisies();
+    if (!doc || !liste.length) return;
+    const octets = classeurXlsx('Amorces', classeurAmorces(doc, r, liste));
+    telecharger(nomSur(doc.nom.replace(/\.[^.]+$/, ''), '_amorces.xlsx'),
+                new Blob([octets as BlobPart],
+                         {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  });
+  majBilan();
 }
 
 function rendreCiblesSpecificite(): void {
@@ -732,6 +789,42 @@ const IUPAC_LISIBLE = (lettre: string): string => {
   const cls = IUPAC[lettre];
   return cls && cls.length > 1 ? `<span class="note">(${cls.split('').join(' ou ')})</span>` : '';
 };
+
+/** Le classeur des oligonucléotides sélectionnés : une ligne par
+ *  oligonucléotide — F, R, et la sonde quand il y en a une — parce que c'est
+ *  ainsi qu'on les commande, et non une ligne par paire. */
+function classeurAmorces(doc: DocumentSeq, r: ResultatAmorces, choisies: readonly number[]): Cellule[][] {
+  const base = doc.nom.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 20);
+  const lignes: Cellule[][] = [[
+    'Nom', 'Paire', 'Rôle', 'Séquence 5\u2032→3\u2032 (à commander)', 'Brin',
+    'Sur le brin + (5\u2032→3\u2032)', 'Début', 'Fin', 'Longueur',
+    'Tm (°C)', 'GC (%)', 'ΔG épingle', 'Amplicon (nt)', 'Sites', 'Fichier'
+  ]];
+  const arrondi = (v: number, d = 1) => Math.round(v * 10 ** d) / 10 ** d;
+
+  for (const i of choisies) {
+    const p = r.paires[i];
+    if (!p) continue;
+    const n = i + 1;
+    lignes.push([`${base}_F${n}`, n, 'Amorce avant', p.avant.seq, '+', p.avant.seq,
+                 p.avant.debut, p.avant.fin, p.avant.seq.length,
+                 arrondi(p.avant.tm), arrondi(p.avant.gc), arrondi(p.avant.dgEpingle),
+                 p.amplicon, p.sitesAvant, doc.nom]);
+    lignes.push([`${base}_R${n}`, n, 'Amorce arrière', p.arriere.seq, '−',
+                 complementInverse(p.arriere.seq),
+                 p.arriere.debut, p.arriere.fin, p.arriere.seq.length,
+                 arrondi(p.arriere.tm), arrondi(p.arriere.gc), arrondi(p.arriere.dgEpingle),
+                 p.amplicon, p.sitesArriere, doc.nom]);
+    if (p.sonde) {
+      lignes.push([`${base}_S${n}`, n, `Sonde (collée à ${p.sonde.collee})`, p.sonde.seq, p.sonde.brin,
+                   p.sonde.brin === '+' ? p.sonde.seq : complementInverse(p.sonde.seq),
+                   p.sonde.debut, p.sonde.fin, p.sonde.seq.length,
+                   arrondi(p.sonde.tm), arrondi(p.sonde.gc), null,
+                   p.amplicon, null, doc.nom]);
+    }
+  }
+  return lignes;
+}
 
 /* ── Exports ─────────────────────────────────────────────────────────────── */
 
@@ -935,6 +1028,19 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
   $('#opt-sonde').addEventListener('change', majSonde);
   majSonde();
 
+  // Les champs de sels ne servent pas aux deux méthodes : on ne montre que
+  // ceux qui comptent, plutôt que de laisser croire qu'ils agissent tous.
+  const majMethodeTm = () => {
+    const sel = ($('#tm-methode') as HTMLSelectElement).value === 'sel';
+    $('#reglage-na').hidden = !sel;
+    for (const id of ['#c-k', '#c-tris', '#c-mg', '#c-dntp']) {
+      const champ = ($(id) as HTMLInputElement).closest('.reglage');
+      if (champ) (champ as HTMLElement).classList.toggle('eteint', sel);
+    }
+  };
+  $('#tm-methode').addEventListener('change', majMethodeTm);
+  majMethodeTm();
+
   $('#btn-copier').addEventListener('click', async (e) => {
     const doc = docActif();
     if (!doc) return;
@@ -1044,6 +1150,8 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
         oligoNM: val('#c-oligo'), kMM: val('#c-k'), trisMM: val('#c-tris'),
         mgMM: val('#c-mg'), dntpMM: val('#c-dntp')
       },
+      methodeTm: ($('#tm-methode') as HTMLSelectElement).value as 'ppv' | 'sel',
+      naMM: val('#c-na'),
       mesappariementsMax: val('#spec-mes'),
       exigerSpecificite: ($('#spec-exiger') as HTMLInputElement).checked,
       // Toutes les autres séquences ouvertes servent de contre-épreuve : c'est
