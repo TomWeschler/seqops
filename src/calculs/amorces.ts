@@ -19,6 +19,14 @@ import {ampliconsParasites, sitesHybridation} from '../core/specificite.js';
 import type {AmpliconParasite} from '../core/specificite.js';
 import type {Calcul, Contexte} from './types.js';
 
+/** Combien de couples la boucle d'appariement garde en réserve, et combien
+ *  d'entre eux passent l'examen de spécificité. Ce sont des plafonds de coût,
+ *  pas des réglages métier : ils sont volontairement indépendants du nombre de
+ *  paires demandé, pour que ce nombre ne change que la longueur de la liste
+ *  rendue, jamais son contenu. */
+const VIVIER_MIN = 400;
+const EXAMEN_SPECIFICITE = 200;
+
 export interface ParamsAmorces {
   readonly seq: string;
   readonly longMin?: number;
@@ -240,7 +248,11 @@ function evaluerSonde(
     // Les contrôles portent sur l'oligonucléotide RÉELLEMENT commandé : un
     // CCCC du brin direct devient un GGGG sur l'autre brin, et c'est ce GGGG
     // qui repliera la sonde.
-    if (repetitionTropLongue(oligo, p.repetitionMax, p.repetitionGMax)) continue;
+    // Les suites de G sont jugées plus sévèrement ici que sur une amorce, et
+    // sans suivre le réglage : un GGGG replie la sonde en quadruplexe, le
+    // fluorophore se retrouve contre l'extincteur et la sonde ne rapporte plus
+    // rien. Une amorce, elle, serait seulement un peu moins efficace.
+    if (repetitionTropLongue(oligo, p.repetitionMax, Math.min(3, p.repetitionGMax))) continue;
     if (oligo.startsWith('G')) continue;              // le G en 5' éteint le fluorophore
     // Plus de C que de G : c'est la règle des sondes d'hydrolyse, et elle est
     // exigée, non plus seulement préférée.
@@ -333,7 +345,7 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
       ampliconMin: params.ampliconMin ?? 70, ampliconMax: params.ampliconMax ?? 200,
       deltaTmMax: params.deltaTmMax ?? 2,
       repetitionMax: params.repetitionMax ?? 4,
-      repetitionGMax: params.repetitionGMax ?? 3,
+      repetitionGMax: params.repetitionGMax ?? 4,
       fin3GC: params.fin3GC ?? true,
       pinceMax: params.pinceMax ?? 3,
       // Seuils d'OligoCalc : cinq paires font un auto-appariement, quatre font
@@ -411,6 +423,16 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
       return lo;
     };
 
+    // LE VIVIER. La boucle d'appariement ne garde qu'un nombre borné de
+    // couples, sinon on garderait des millions d'objets. Mais ce vivier ne peut
+    // pas être calibré sur maxPaires : les étapes suivantes — dimères, sonde,
+    // spécificité — écartent ensuite, et parfois presque tout. Le calibrer sur
+    // maxPaires revenait à demander cinq paires et n'en obtenir aucune, alors
+    // qu'en demander cinquante en rendait treize. Le vivier est donc large et,
+    // en deçà de VIVIER_MIN, ne dépend pas de maxPaires : demander moins de
+    // paires rend alors exactement les mêmes, en moins nombreuses. La
+    // troncature à maxPaires n'a lieu qu'à la toute fin.
+    const vivier = Math.max(VIVIER_MIN, p.maxPaires * 4);
     const retenues: PaireAmorces[] = [];
     let pire = Infinity;
     let examinees = 0;
@@ -442,13 +464,13 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
                       Math.abs(f.tm - p.tmOptimale) + Math.abs(r.tm - p.tmOptimale) +
                       Math.abs(f.gc - 50) / 5 + Math.abs(r.gc - 50) / 5 +
                       grossier;
-        if (retenues.length >= p.maxPaires && score >= pire) continue;
+        if (retenues.length >= vivier && score >= pire) continue;
         retenues.push({avant: f, arriere: r, amplicon, deltaTm, score,
                        dgDimere: 0, dimere3: false, termes: [],
                        sitesAvant: 0, sitesArriere: 0, parasites: []});
-        if (retenues.length > p.maxPaires * 4) {
+        if (retenues.length > vivier * 2) {
           retenues.sort((a, b) => a.score - b.score);
-          retenues.length = p.maxPaires;
+          retenues.length = vivier;
           pire = (retenues[retenues.length - 1] as PaireAmorces).score;
         }
       }
@@ -481,6 +503,12 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
     const optionsSites = {mesappariementsMax: p.mesappariementsMax, mesappariements3Max: 0};
     let ecarteesSpecificite = 0;
     if (retenues.length) {
+      // Chercher les sites d'hybridation coûte cher : on n'examine que les
+      // meilleures. Le plafond est fixe, et non trois fois maxPaires : sinon
+      // demander vingt paires en rendait treize et en demander cinquante
+      // vingt-sept, les mêmes réglages donnant deux listes différentes.
+      const aExaminer = Math.max(EXAMEN_SPECIFICITE, p.maxPaires * 3);
+      if (retenues.length > aExaminer) retenues.length = aExaminer;
       const specifiques: PaireAmorces[] = [];
       for (const [rang, paire] of retenues.entries()) {
         if ((rang & 7) === 0 && ctx.annule()) { interrompu = true; break; }

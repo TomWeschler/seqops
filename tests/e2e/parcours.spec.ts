@@ -555,13 +555,15 @@ test('les valeurs par défaut sont celles du laboratoire', async ({page}) => {
     '#gc-min': '40', '#gc-max': '60',
     '#sonde-tm-min': '69', '#sonde-tm-max': '71',
     '#sonde-lg-min': '18', '#sonde-lg-max': '32',
-    '#rep-max': '4', '#rep-g-max': '3', '#pince-max': '3',
+    '#rep-max': '4', '#rep-g-max': '4', '#pince-max': '3',
     '#auto-max': '4', '#epingle-max': '3', '#apparie3-max': '3'
   };
   for (const [champ, valeur] of Object.entries(attendu)) {
     await expect(page.locator(champ)).toHaveValue(valeur);
   }
   await expect(page.locator('#fin3-gc')).toBeChecked();
+  // La qPCR est le cas courant du laboratoire : la sonde est demandée d'emblée.
+  await expect(page.locator('#opt-sonde')).toBeChecked();
   // La Tm ajustée au sel est la méthode par défaut, et son champ est visible.
   await expect(page.locator('#tm-methode')).toHaveValue('sel');
   await expect(page.locator('#reglage-na')).toBeVisible();
@@ -623,10 +625,13 @@ test('les réglages d’amorces sont rangés, la sonde s’éteint quand on ne l
   await expect(page.locator('#p-amorces legend').nth(2)).toHaveText('Réaction');
   await expect(page.locator('#p-amorces legend').nth(3)).toHaveText('Spécificité');
   await expect(page.locator('#p-amorces legend').first()).toHaveText('Amorces');
+  // Cochée par défaut, donc allumée ; décocher l'éteint, recocher la rallume.
+  await expect(page.locator('#bloc-sonde')).not.toHaveClass(/eteint/);
+  await expect(page.locator('#sonde-dist')).toHaveValue('1');
+  await page.uncheck('#opt-sonde');
   await expect(page.locator('#bloc-sonde')).toHaveClass(/eteint/);
   await page.check('#opt-sonde');
   await expect(page.locator('#bloc-sonde')).not.toHaveClass(/eteint/);
-  await expect(page.locator('#sonde-dist')).toHaveValue('1');
   // La phrase explicative a été retirée : elle n'a pas à revenir.
   await expect(page.locator('#p-amorces')).not.toContainText('fluorophore');
 });

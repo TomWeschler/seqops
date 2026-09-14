@@ -31,6 +31,24 @@ describe('balayage d’amorces', () => {
     expect(r.interrompu).toBe(false);
   });
 
+  /** Demander moins de paires doit en rendre moins, jamais aucune. Le
+   *  balayage a longtemps réduit sa réserve à maxPaires avant les étapes qui
+   *  écartent — dimères, spécificité, sonde — si bien que demander cinq paires
+   *  n'en rendait aucune alors que demander cinquante en rendait treize. */
+  it('rend autant de paires qu’on lui en demande, sans s’affamer', () => {
+    const commun = {seq, ampliconMin: 150, ampliconMax: 600};
+    const beaucoup = balayageAmorces.executer({...commun, maxPaires: 60}, contexte()).paires;
+    expect(beaucoup.length).toBeGreaterThan(20);
+    for (const demande of [1, 5, 13, 20]) {
+      const obtenues = balayageAmorces.executer({...commun, maxPaires: demande}, contexte()).paires;
+      expect(obtenues).toHaveLength(Math.min(demande, beaucoup.length));
+      // Et ce sont les mêmes, dans le même ordre : le nombre demandé ne change
+      // que la longueur de la liste, jamais son contenu.
+      expect(obtenues.map((x) => x.avant.seq)).toEqual(
+        beaucoup.slice(0, obtenues.length).map((x) => x.avant.seq));
+    }
+  });
+
   it('respecte toutes les contraintes annoncées', () => {
     for (const p of r.paires) {
       expect(p.amplicon).toBeGreaterThanOrEqual(150);
@@ -44,9 +62,10 @@ describe('balayage d’amorces', () => {
         expect(a.tm).toBeLessThanOrEqual(61);
         expect(a.gc).toBeGreaterThanOrEqual(40);
         expect(a.gc).toBeLessThanOrEqual(60);
-        // Pas plus de quatre fois la même base, pas plus de trois G d'affilée.
+        // Pas plus de quatre fois la même base, et pas plus de quatre G
+        // d'affilée : les G en série s'empilent en quadruplexe.
         expect(a.seq).not.toMatch(/([ACGT])\1{4}/);
-        expect(a.seq).not.toMatch(/G{4}/);
+        expect(a.seq).not.toMatch(/G{5}/);
         // La dernière base en 3' est un G ou un C, mais pas plus de trois G+C
         // dans les cinq dernières.
         expect(a.seq).toMatch(/[GC]$/);
@@ -301,6 +320,8 @@ describe('règles de forme des oligonucléotides', () => {
       const c = (s!.seq.match(/C/g) ?? []).length;
       const g = (s!.seq.match(/G/g) ?? []).length;
       expect(c).toBeGreaterThan(g);
+      // Une sonde n'accepte jamais de GGGG, même quand le réglage autorise
+      // quatre G d'affilée sur les amorces.
       expect(s!.seq).not.toMatch(/G{4}/);
       expect((s!.seq.slice(-5).match(/[GC]/g) ?? []).length).toBeLessThanOrEqual(3);
       expect(s!.seq.length).toBeGreaterThanOrEqual(18);
