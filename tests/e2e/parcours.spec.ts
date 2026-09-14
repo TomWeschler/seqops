@@ -567,6 +567,42 @@ test('les valeurs par défaut sont celles du laboratoire', async ({page}) => {
   await expect(page.locator('#reglage-na')).toBeVisible();
 });
 
+test('le score s’explique au survol, en phrases', async ({page}) => {
+  await page.evaluate(() => {
+    let x = 89;
+    let s = '';
+    for (let i = 0; i < 1200; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
+    return window.seqops!.accepter([new File([`>cible\n${s}\n`], 'cible.fas', {type: 'text/plain'})]);
+  });
+  await page.click('#btn-amorces');
+  await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
+
+  const bulle = page.locator('#infobulle');
+  await expect(bulle).toBeHidden();
+  await page.locator('#resultats td.score').first().hover();
+  await expect(bulle).toBeVisible();
+
+  // Ce qu'on veut lire : le sens du score, puis des phrases — pas une colonne
+  // de nombres nus.
+  await expect(bulle).toContainText('plus il est bas, mieux c’est');
+  await expect(bulle).toContainText('classe');
+  const lignes = bulle.locator('li');
+  expect(await lignes.count()).toBeGreaterThan(0);
+  const premiere = await lignes.first().innerText();
+  expect(premiere.length).toBeGreaterThan(30);        // une phrase, pas un chiffre
+  expect(premiere).toMatch(/\+\d/);                   // et sa contribution
+
+  // Elle s'efface dès qu'on la quitte.
+  await page.locator('#p-amorces h2').hover();
+  await expect(bulle).toBeHidden();
+
+  // Et elle s'atteint au clavier, pour qui ne survole pas.
+  await page.locator('#resultats td.score').first().focus();
+  await expect(bulle).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(bulle).toBeHidden();
+});
+
 test('les colonnes portent les noms du métier', async ({page}) => {
   await page.evaluate(() => {
     let x = 67;

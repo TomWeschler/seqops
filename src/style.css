@@ -183,3 +183,21 @@ legend .case{font:inherit;letter-spacing:inherit;text-transform:inherit;color:in
 /* Ce qu'on lit sur le brin direct, sous ce qu'on commande : même famille, mais
    visiblement secondaire, pour qu'on ne commande pas l'un pour l'autre. */
 .complement{color:var(--text-dim);font-style:italic}
+
+/* ── L'infobulle du score ─────────────────────────────────────────────────
+   Des phrases, pas un tableau de chiffres : c'est ce qu'on lit d'un coup
+   d'œil quand on hésite entre deux paires. */
+.infobulle{position:fixed;z-index:50;max-width:min(30rem,calc(100vw - 2rem));
+           background:var(--surface2);border:1px solid var(--accent);border-radius:10px;
+           padding:.8rem .9rem;box-shadow:0 12px 32px rgba(0,0,0,.55);
+           font-size:.85rem;line-height:1.5;pointer-events:none}
+.infobulle .titre{font-weight:700;margin-bottom:.35rem}
+.infobulle .note{margin-bottom:.6rem}
+.infobulle ul{list-style:none;display:grid;gap:.45rem}
+.infobulle li{display:flex;gap:.6rem;align-items:baseline;
+              border-top:1px solid var(--border);padding-top:.45rem}
+.infobulle li:first-child{border-top:none;padding-top:0}
+.infobulle .poids{margin-left:auto;font-family:var(--mono);font-size:.8rem;
+                  color:var(--warn);white-space:nowrap}
+td.score{cursor:help;text-decoration:underline dotted var(--text-dim);text-underline-offset:3px}
+td.score:hover,td.score:focus{color:#fff;outline:none;background:var(--accent-dim)}

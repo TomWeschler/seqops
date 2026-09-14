@@ -23,6 +23,7 @@ sur un poste d'entreprise.
 | Analyser | Composition, GC, biais, GC glissant, Tm (Wallace, GC %, plus proche voisin SantaLucia 1998), masse, cadres ouverts, motifs IUPAC. |
 | Chercher des amorces | Balayage exhaustif des couples possibles. Réglages par défaut du laboratoire : Tm 59–61 °C, 18–22 nt, amplicon 70–200 nt, 40–60 % GC. Règles de forme : pas plus de quatre fois la même base, pas plus de trois G d'affilée, fin 3′ en G ou C avec au plus trois G+C sur les cinq dernières, et auto-complémentarité contrôlée en paires de bases comme chez OligoCalc. |
 | Chercher une sonde | Sonde d'hydrolyse (qPCR) entre les deux amorces : 69–71 °C, 18–32 nt, jamais de G en 5′, plus de C que de G, collée à F (brin +) ou à R (brin −). |
+| Comprendre le classement | Le score de chaque paire s'explique au survol : une phrase par défaut mesuré, et ce qu'il coûte. Sa décomposition est produite par le calcul lui-même, pas reconstituée par l'affichage. |
 | Vérifier la spécificité | Sites d'hybridation de chaque amorce sur la cible **et sur tous les autres fichiers ouverts** (paralogue, vecteur), et détection des produits parasites — la deuxième bande du gel. |
 | Calculer juste | Tm dans les conditions réelles de la réaction (K⁺, Mg²⁺, dNTP, amorce) et non à 50 mM de sodium ; épingles et dimères évalués en ΔG. |
 | Débusquer les hétérozygotes | Positions à deux pics que l'appel de bases a tranchées sans le dire, cherchées dans la zone exploitable, avec le code IUPAC proposé. |

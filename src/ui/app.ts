@@ -14,7 +14,7 @@ import type {Correction, OptionsCorrection} from '../core/sequence.js';
 import {rapportHtml, rapportTexte} from '../core/rapport.js';
 import {classeurXlsx} from '../core/xlsx.js';
 import type {Cellule} from '../core/xlsx.js';
-import type {ResultatAmorces, Sonde} from '../calculs/amorces.js';
+import type {ResultatAmorces, Sonde, TermeScore} from '../calculs/amorces.js';
 import type {ResultatAnalyse} from '../calculs/analyse.js';
 import {ExecuteurLocal} from '../jobs/executeur-local.js';
 import type {Executeur, Tache} from '../jobs/types.js';
@@ -575,10 +575,99 @@ function rendreAmorces(r: ResultatAmorces): void {
           ? `<br><span class="rouge note">${nb(p.parasites.length)} produit${p.parasites.length > 1 ? 's' : ''} parasite${p.parasites.length > 1 ? 's' : ''} : ` +
             ech(p.parasites.slice(0, 2).map((x) => `${x.taille} pb sur ${x.source}`).join(', ')) + '</span>'
           : ''}</td>
-      <td class="mono">${nb(p.score, 2)}</td></tr>`).join('') +
+      <td class="mono score" data-detail="${i}" tabindex="0"
+          aria-label="Score ${nb(p.score, 2)}, détail au survol">${nb(p.score, 2)}</td></tr>`).join('') +
     '</tbody></table></div>';
 
   brancherSelection(r);
+  brancherInfobulle(r);
+}
+
+/** L'infobulle du score : au survol et au clavier, jamais à l'insu — elle
+ *  s'efface dès qu'on la quitte. */
+function brancherInfobulle(r: ResultatAmorces): void {
+  const bulle = $('#infobulle');
+  const cacher = () => { bulle.hidden = true; };
+
+  const montrer = (cible: HTMLElement) => {
+    const index = Number(cible.dataset.detail);
+    bulle.innerHTML = detailDuScore(r, index);
+    bulle.hidden = false;
+    // Placée sous la cellule, ramenée dans la fenêtre si elle en sortait.
+    const c = cible.getBoundingClientRect();
+    const b = bulle.getBoundingClientRect();
+    const gauche = Math.max(8, Math.min(c.left - b.width + c.width, globalThis.innerWidth - b.width - 8));
+    const dessous = c.bottom + 8;
+    const haut = dessous + b.height > globalThis.innerHeight - 8 ? c.top - b.height - 8 : dessous;
+    bulle.style.left = `${gauche}px`;
+    bulle.style.top = `${Math.max(8, haut)}px`;
+  };
+
+  for (const cellule of Array.from($('#resultats').querySelectorAll<HTMLElement>('[data-detail]'))) {
+    cellule.addEventListener('mouseenter', () => montrer(cellule));
+    cellule.addEventListener('focus', () => montrer(cellule));
+    cellule.addEventListener('mouseleave', cacher);
+    cellule.addEventListener('blur', cacher);
+  }
+  document.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Escape') cacher();
+  });
+}
+
+/** Le score, dit en français.
+ *
+ *  Une colonne de nombres sans explication n'apprend rien : chaque terme est
+ *  donc rendu par une phrase qui nomme le défaut mesuré, suivie de ce qu'il
+ *  coûte. Les phrases sont ici, les nombres viennent du calcul — et une épreuve
+ *  vérifie que leur somme fait bien le score affiché. */
+function phraseDuTerme(t: TermeScore): string {
+  const d = (v: number, n = 1) => nb(Math.abs(v), n);
+  // Un vrai signe moins, comme ailleurs dans l'application : le trait d'union
+  // des locales se lit mal au milieu d'une phrase.
+  const signe = (v: number, n = 1) => nb(v, n).replace('-', '\u2212');
+  switch (t.cle) {
+    case 'deltaTm':
+      return t.valeur < 0.5
+        ? `Les deux amorces fondent presque ensemble : ${d(t.valeur)} °C d’écart seulement.`
+        : `Les deux amorces ne fondent pas ensemble : ${d(t.valeur)} °C d’écart. C’est le défaut
+           le plus coûteux, il compte double — à la même température, l’une s’accroche quand
+           l’autre décroche.`;
+    case 'tmCible':
+      return `Leurs températures de fusion s’écartent au total de ${d(t.valeur)} °C de la cible
+              visée, le milieu de votre fenêtre.`;
+    case 'gc':
+      return `Leur composition s’écarte de ${d(t.valeur, 0)} points de l’équilibre de 50 % GC.`;
+    case 'appariement':
+      return `Les deux amorces se reconnaissent sur ${d(t.valeur, 0)} bases : de quoi amorcer
+              l’une sur l’autre plutôt que sur la cible.`;
+    case 'dimere':
+      return `Le dimère qu’elles forment tient à ${signe(t.valeur)} kcal/mol — il existe, sans
+              être assez stable pour être éliminatoire.`;
+    case 'sondeTm':
+      return `La sonde est à ${d(t.valeur)} °C de sa température visée.`;
+    case 'sondeDistance':
+      return t.valeur <= 1
+        ? `La sonde n’est pas tout à fait collée à son amorce : ${d(t.valeur, 0)} base d’écart.`
+        : `La sonde est posée à ${d(t.valeur, 0)} bases de son amorce ; plus elle s’en éloigne,
+           plus le signal tarde.`;
+    case 'sondeDimere':
+      return `La sonde s’apparie à l’une des amorces (${signe(t.valeur)} kcal/mol) : une part du
+              signal risque de partir avant l’amplification.`;
+    default:
+      return '';
+  }
+}
+
+function detailDuScore(r: ResultatAmorces, index: number): string {
+  const p = r.paires[index];
+  if (!p) return '';
+  const lignes = p.termes.map((t) =>
+    `<li>${phraseDuTerme(t)} <span class="poids">+${nb(t.points, 2)}</span></li>`).join('');
+  return `<p class="titre">Score ${nb(p.score, 2)} — plus il est bas, mieux c’est.</p>
+    <p class="note">Il ne mesure rien en soi : il classe ces ${nb(r.paires.length)} paires entre
+      elles. Ce qui serait éliminatoire — structure interdite, manque de spécificité — a déjà
+      écarté les autres.</p>
+    ${lignes ? `<ul>${lignes}</ul>` : '<p class="note">Aucun défaut mesurable : score nul.</p>'}`;
 }
 
 /** Cases à cocher, bilan, et export. Rebranché à chaque rendu : le tableau est

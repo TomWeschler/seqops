@@ -319,3 +319,48 @@ describe('règles de forme des oligonucléotides', () => {
     for (const p of strict.paires) expect(p.avant.seq).toMatch(/[GC]$/);
   });
 });
+
+describe('détail du score', () => {
+  const seq = sequence(2500, 91);
+  const r = balayageAmorces.executer({seq, sonde: true, maxPaires: 15}, contexte());
+
+  it('la somme des termes redonne le score, exactement', () => {
+    expect(r.paires.length).toBeGreaterThan(0);
+    for (const p of r.paires) {
+      const somme = p.termes.reduce((s, t) => s + t.points, 0);
+      // C'est la garantie que l'explication affichée décrit bien le calcul
+      // réellement fait, et non une reconstitution approchée.
+      expect(somme).toBeCloseTo(p.score, 9);
+    }
+  });
+
+  it('les termes sont rangés du plus lourd au plus léger', () => {
+    for (const p of r.paires) {
+      const points = p.termes.map((t) => t.points);
+      expect([...points].sort((a, b) => b - a)).toEqual(points);
+    }
+  });
+
+  it('un terme nul n’est pas affiché : une paire parfaite n’a rien à expliquer', () => {
+    for (const p of r.paires) {
+      expect(p.termes.every((t) => t.points > 0)).toBe(true);
+    }
+  });
+
+  it('sans sonde, aucun terme de sonde', () => {
+    const sansSonde = balayageAmorces.executer({seq, maxPaires: 10}, contexte());
+    for (const p of sansSonde.paires) {
+      expect(p.termes.some((t) => t.cle.startsWith('sonde'))).toBe(false);
+    }
+  });
+
+  it('chaque terme porte la mesure qui le produit', () => {
+    const avecDelta = r.paires.find((p) => p.termes.some((t) => t.cle === 'deltaTm'));
+    if (avecDelta) {
+      const terme = avecDelta.termes.find((t) => t.cle === 'deltaTm')!;
+      // Le terme d'écart de Tm compte double : c'est le défaut le plus coûteux.
+      expect(terme.points).toBeCloseTo(terme.valeur * 2, 9);
+      expect(terme.valeur).toBeCloseTo(avecDelta.deltaTm, 9);
+    }
+  });
+});

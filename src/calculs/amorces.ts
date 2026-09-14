@@ -125,6 +125,17 @@ export interface Sonde {
   readonly collee: 'F' | 'R';
 }
 
+/** Un terme du score, avec ce qui le produit. Les phrases sont écrites par
+ *  l'interface ; le calcul ne rend que des nombres et leur nature. */
+export interface TermeScore {
+  readonly cle: 'deltaTm' | 'tmCible' | 'gc' | 'appariement' | 'dimere'
+              | 'sondeTm' | 'sondeDistance' | 'sondeDimere';
+  /** Ce que ce terme ajoute au score. */
+  readonly points: number;
+  /** La mesure qui le produit : °C, points de %, bases ou kcal/mol selon la clé. */
+  readonly valeur: number;
+}
+
 export interface PaireAmorces {
   readonly avant: Amorce;
   readonly arriere: Amorce;
@@ -139,6 +150,10 @@ export interface PaireAmorces {
    *  confondues. 1 et 1, c'est ce qu'on veut. */
   readonly sitesAvant: number;
   readonly sitesArriere: number;
+  /** Le détail du score, terme par terme. Leur somme fait le score : c'est
+   *  vérifié par une épreuve, pour que l'explication ne puisse pas dériver du
+   *  calcul. */
+  readonly termes: readonly TermeScore[];
   /** Produits que ces amorces peuvent former ailleurs que sur leur cible. */
   readonly parasites: readonly AmpliconParasite[];
 }
@@ -277,6 +292,34 @@ function evaluer(
           dgEpingle, dgAutoDimere: auto.dg};
 }
 
+/** Reconstitue, terme à terme, le score d'une paire. Les mêmes expressions que
+ *  la boucle d'appariement — leur somme doit redonner le score exactement. */
+function termesDuScore(paire: PaireAmorces, p: Required<ParamsAmorces>): TermeScore[] {
+  const termes: TermeScore[] = [];
+  const ajouter = (cle: TermeScore['cle'], points: number, valeur: number) => {
+    if (points > 0) termes.push({cle, points, valeur});
+  };
+
+  ajouter('deltaTm', paire.deltaTm * 2, paire.deltaTm);
+  const ecartCible = Math.abs(paire.avant.tm - p.tmOptimale) + Math.abs(paire.arriere.tm - p.tmOptimale);
+  ajouter('tmCible', ecartCible, ecartCible);
+  const ecartGC = Math.abs(paire.avant.gc - 50) + Math.abs(paire.arriere.gc - 50);
+  ajouter('gc', ecartGC / 5, ecartGC);
+  const grossier = Math.max(complementariteTerminale(paire.avant.seq, paire.arriere.seq),
+                            complementariteTerminale(paire.arriere.seq, paire.avant.seq));
+  ajouter('appariement', grossier, grossier);
+  ajouter('dimere', Math.max(0, -paire.dgDimere) / 2, paire.dgDimere);
+
+  if (paire.sonde) {
+    const ecartSonde = Math.abs(paire.sonde.tm - p.sondeTmOptimale);
+    const distance = Math.min(paire.sonde.distanceAvant, paire.sonde.distanceArriere);
+    ajouter('sondeTm', ecartSonde / 2, ecartSonde);
+    ajouter('sondeDistance', distance / 2, distance);
+    ajouter('sondeDimere', Math.max(0, -paire.sonde.dgAvecAmorces) / 4, paire.sonde.dgAvecAmorces);
+  }
+  return termes.sort((a, b) => b.points - a.points);
+}
+
 export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
   nom: 'amorces/balayage',
   libelle: 'Balayage exhaustif de paires d’amorces',
@@ -401,7 +444,7 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
                       grossier;
         if (retenues.length >= p.maxPaires && score >= pire) continue;
         retenues.push({avant: f, arriere: r, amplicon, deltaTm, score,
-                       dgDimere: 0, dimere3: false,
+                       dgDimere: 0, dimere3: false, termes: [],
                        sitesAvant: 0, sitesArriere: 0, parasites: []});
         if (retenues.length > p.maxPaires * 4) {
           retenues.sort((a, b) => a.score - b.score);
@@ -496,8 +539,7 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
           const brinVoulu = collee === 'F' ? '+' : '−';
           if (s.brin !== brinVoulu) continue;
 
-          // À égalité par ailleurs, on préfère le brin le plus riche en C.
-          const score = Math.abs(s.tm - p.sondeTmOptimale) + proche + (s.plusDeC ? 0 : 0.5);
+          const score = Math.abs(s.tm - p.sondeTmOptimale) + proche;
           if (score < meilleurScore) {
             meilleurScore = score;
             meilleure = {...s, distanceAvant, distanceArriere, collee};
@@ -520,6 +562,11 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
       finales = avecSonde;
     }
     if (finales.length > p.maxPaires) finales.length = p.maxPaires;
+
+    // Le détail du score, reconstitué sur les seules paires retenues : le
+    // construire dans la boucle d'appariement allouerait des millions d'objets
+    // pour des couples qu'on jette aussitôt.
+    finales = finales.map((paire) => ({...paire, termes: termesDuScore(paire, p)}));
 
     ctx.signaler(L * 2, L * 2, interrompu ? 'interrompu' : 'terminé');
     return {paires: finales, candidatsAvant: avant.length, candidatsArriere: arriere.length,
