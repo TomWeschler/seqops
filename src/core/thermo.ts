@@ -176,10 +176,12 @@ export function epingle(seq: string, boucleMin = 3): Structure {
     for (let j = i + boucleMin + 1; j < seq.length; j++) {
       // Tige : seq[i..] apparié à seq[..j] en remontant.
       let taille = 0;
+      // La boucle restante se mesure APRÈS avoir ajouté la paire : la compter
+      // avant laissait passer des tiges refermées sur une boucle d'une base.
       while (i + taille < j - taille &&
              j - taille < seq.length &&
              seq[i + taille] === complementInverse(seq[j - taille] as string) &&
-             j - taille - (i + taille) - 1 >= boucleMin) {
+             (j - taille - 1) - (i + taille + 1) + 1 >= boucleMin) {
         taille++;
       }
       if (taille < 3) continue;
@@ -234,4 +236,78 @@ export function tmSelon(
   methode: MethodeTm, seq: string, conditions: Conditions = {}, naMM = 50
 ): number | null {
   return methode === 'sel' ? tmAjusteAuSel(seq, naMM) : tm(seq, conditions);
+}
+
+/* ── L'autre lecture des structures : en paires de bases ──────────────────
+   Les ΔG ci-dessus disent si une structure TIENT à la température de travail.
+   Les règles d'OligoCalc, elles, comptent des paires de bases — et c'est ce
+   langage-là que parlent les protocoles : « au moins cinq paires pour un
+   auto-appariement, au moins quatre pour une épingle », et une complémentarité
+   en 3' qu'on veut entre zéro et trois. Les deux lectures sont gardées : un
+   court appariement peut être sans danger thermodynamiquement et rester
+   interdit par le protocole du laboratoire, et réciproquement. */
+
+export interface Appariement {
+  /** Longueur du plus long appariement contigu. */
+  readonly bp: number;
+  /** Vrai s'il met en jeu les dernières bases en 3' — celles qui s'allongent. */
+  readonly touche3: boolean;
+}
+
+const RIEN: Appariement = {bp: 0, touche3: false};
+
+/** Le plus long appariement contigu entre deux oligonucléotides, tous
+ *  décalages essayés. `a` contre le complément inverse de `b`. */
+export function plusLongAppariement(a: string, b: string, fenetre3 = 5): Appariement {
+  if (!/^[ACGT]+$/.test(a) || !/^[ACGT]+$/.test(b)) return RIEN;
+  const face = complementInverse(b);
+  let meilleur = RIEN;
+  for (let decalage = -(face.length - 1); decalage < a.length; decalage++) {
+    let courant = 0;
+    for (let i = 0; i <= a.length; i++) {
+      const j = i - decalage;
+      const apparie = i < a.length && j >= 0 && j < face.length && a[i] === face[j];
+      if (apparie) {
+        courant++;
+        continue;
+      }
+      if (courant >= 2) {
+        // i est la première position NON appariée : le segment finit en i−1.
+        // En dessous de deux paires, il n'y a pas d'appariement, il y a du hasard.
+        const touche3 = i >= a.length - fenetre3 + 1;
+        if (courant > meilleur.bp || (courant === meilleur.bp && touche3 && !meilleur.touche3)) {
+          meilleur = {bp: courant, touche3};
+        }
+      }
+      courant = 0;
+    }
+  }
+  return meilleur;
+}
+
+/** Auto-appariement : l'oligonucléotide contre lui-même. C'est le
+ *  « self-complementarity » d'OligoCalc. */
+export function autoAppariement(oligo: string, fenetre3 = 5): Appariement {
+  return plusLongAppariement(oligo, oligo, fenetre3);
+}
+
+/** La plus longue tige d'épingle à cheveux, en paires de bases, avec une
+ *  boucle d'au moins `boucleMin` bases. */
+export function plusLongueEpingle(seq: string, boucleMin = 3): Appariement {
+  if (!/^[ACGT]+$/.test(seq)) return RIEN;
+  let meilleur = RIEN;
+  for (let i = 0; i < seq.length; i++) {
+    for (let j = i + boucleMin + 1; j < seq.length; j++) {
+      let taille = 0;
+      while (i + taille < j - taille &&
+             seq[i + taille] === complementInverse(seq[j - taille] as string) &&
+             (j - taille - 1) - (i + taille + 1) + 1 >= boucleMin) {
+        taille++;
+      }
+      // Une seule paire n'est pas une tige : la signaler noierait le vrai
+      // signal sous des structures qui n'existent pas.
+      if (taille >= 2 && taille > meilleur.bp) meilleur = {bp: taille, touche3: j >= seq.length - 3};
+    }
+  }
+  return meilleur;
 }

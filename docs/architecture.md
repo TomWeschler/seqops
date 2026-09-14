@@ -108,9 +108,15 @@ exploitable déduite du signal, et deux filtres écartent les faux positifs
 n'est pas un appel de variants : l'outil signale des positions à vérifier, il
 ne décide pas du génotype.
 
-**La thermodynamique** tient compte des sels réels d'une PCR (équivalent sodium
-de von Ahsen 2001) et évalue les structures en ΔG plutôt qu'en longueur
-d'appariement. Approximation assumée : les mésappariements internes d'un dimère
+**La thermodynamique** connaît deux conventions, au choix : la formule ajustée
+au sel d'OligoCalc — celle par défaut, parce que c'est elle que citent les
+protocoles — et le plus proche voisin dans les sels réels de la réaction
+(équivalent sodium de von Ahsen 2001). Elles diffèrent de plusieurs degrés sur
+une même amorce, et changer de méthode change les amorces retenues : ce n'est
+pas un défaut, c'est le sens du réglage. Les structures sont jugées deux fois —
+en ΔG, qui dit si elles tiennent à la température de travail, et en paires de
+bases, qui est le langage des protocoles (cinq paires font un auto-appariement,
+quatre une épingle, et la complémentarité 3′ se veut sous quatre). Approximation assumée : les mésappariements internes d'un dimère
 ne reçoivent pas de pénalité, ils coupent le segment apparié. Un moteur compilé
 (primer3) ferait mieux ; le jour où il sera là, les seuils exprimés en kcal/mol
 se transposeront tels quels.

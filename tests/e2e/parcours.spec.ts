@@ -425,33 +425,58 @@ test('un seuil plus exigeant trouve moins de pics doubles', async ({page}) => {
 });
 
 test('les conditions de réaction se règlent et changent les Tm', async ({page}) => {
+  // Quatre recherches dans une même épreuve : on prend une cible courte, sinon
+  // c'est la patience de l'épreuve qui est mesurée, pas le comportement.
+  test.setTimeout(180_000);
   await page.evaluate(() => {
     let x = 23;
     let s = '';
-    for (let i = 0; i < 1500; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
+    for (let i = 0; i < 700; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
     return window.seqops!.accepter([new File([`>cible\n${s}\n`], 'cible.fas', {type: 'text/plain'})]);
   });
-  await page.fill('#amp-min', '150');
-  await page.fill('#amp-max', '400');
   await page.click('#btn-amorces');
   await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
-  // Les colonnes de structures existent : ΔG du dimère et de l'épingle.
   await expect(page.locator('#resultats th', {hasText: 'ΔG'})).toBeVisible();
   // Autant de cellules que d'en-têtes : une colonne ajoutée sans son titre
   // décale tout le tableau, et ça ne se voit qu'à l'œil — donc jamais.
   const colonnes = await page.locator('#resultats thead th').count();
   const cellules = await page.locator('#resultats tbody tr').first().locator('td').count();
   expect(cellules).toBe(colonnes);
-  const avant = await page.locator('#resultats tbody tr').first().innerText();
 
-  // Beaucoup plus de magnésium : les amorces retenues ne sont plus les mêmes,
-  // parce que la fenêtre de Tm ne sélectionne plus les mêmes oligonucléotides.
+  // Méthode par défaut : ajustée au sel. Le magnésium ne lui dit rien — et
+  // c'est pour cela que son champ est éteint.
+  // On compare le bloc de résultats entier, et non sa première ligne : quand un
+  // réglage déplace les Tm hors de la fenêtre, il n'y a plus AUCUNE ligne — et
+  // c'est encore une réponse.
+  const auSel = await page.locator('#resultats').innerText();
+  await expect(page.locator('#c-mg').locator('xpath=ancestor::div[1]')).toHaveClass(/eteint/);
   await page.fill('#c-mg', '6');
   await page.click('#btn-amorces');
   await expect(page.locator('#taches .tache').first()).toContainText(/terminée|arrêtée/, {timeout: 60_000});
   await page.waitForTimeout(300);
-  const apres = await page.locator('#resultats tbody tr').first().innerText();
-  expect(apres).not.toEqual(avant);
+  expect(await page.locator('#resultats').innerText()).toEqual(auSel);
+
+  // Le sodium de cette formule, lui, compte.
+  await page.fill('#c-na', '500');
+  await page.click('#btn-amorces');
+  await expect(page.locator('#taches .tache').first()).toContainText(/terminée|arrêtée/, {timeout: 60_000});
+  await page.waitForTimeout(300);
+  expect(await page.locator('#resultats').innerText()).not.toEqual(auSel);
+
+  // En plus proche voisin, c'est l'inverse : le magnésium change tout.
+  await page.fill('#c-na', '50');
+  await page.selectOption('#tm-methode', 'ppv');
+  await expect(page.locator('#reglage-na')).toBeHidden();
+  await page.fill('#c-mg', '1.5');
+  await page.click('#btn-amorces');
+  await expect(page.locator('#taches .tache').first()).toContainText(/terminée|arrêtée/, {timeout: 60_000});
+  await page.waitForTimeout(300);
+  const ppv = await page.locator('#resultats').innerText();
+  await page.fill('#c-mg', '6');
+  await page.click('#btn-amorces');
+  await expect(page.locator('#taches .tache').first()).toContainText(/terminée|arrêtée/, {timeout: 60_000});
+  await page.waitForTimeout(300);
+  expect(await page.locator('#resultats').innerText()).not.toEqual(ppv);
 });
 
 test('les amorces s’exportent en classeur, tout ou ligne à ligne', async ({page}) => {
@@ -521,11 +546,46 @@ test('la spécificité est vérifiée sur les autres fichiers ouverts', async ({
   await expect(page.locator('#resultats .rouge').first()).toBeVisible();
 });
 
+test('les valeurs par défaut sont celles du laboratoire', async ({page}) => {
+  await page.setInputFiles('#fichiers', cheminFasta);
+  const attendu: Record<string, string> = {
+    '#tm-min': '59', '#tm-max': '61',
+    '#lg-min': '18', '#lg-max': '22',
+    '#amp-min': '70', '#amp-max': '200',
+    '#gc-min': '40', '#gc-max': '60',
+    '#sonde-tm-min': '69', '#sonde-tm-max': '71',
+    '#sonde-lg-min': '18', '#sonde-lg-max': '32',
+    '#rep-max': '4', '#rep-g-max': '3', '#pince-max': '3',
+    '#auto-max': '4', '#epingle-max': '3', '#apparie3-max': '3'
+  };
+  for (const [champ, valeur] of Object.entries(attendu)) {
+    await expect(page.locator(champ)).toHaveValue(valeur);
+  }
+  await expect(page.locator('#fin3-gc')).toBeChecked();
+  // La Tm ajustée au sel est la méthode par défaut, et son champ est visible.
+  await expect(page.locator('#tm-methode')).toHaveValue('sel');
+  await expect(page.locator('#reglage-na')).toBeVisible();
+});
+
+test('les colonnes portent les noms du métier', async ({page}) => {
+  await page.evaluate(() => {
+    let x = 67;
+    let s = '';
+    for (let i = 0; i < 1200; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
+    return window.seqops!.accepter([new File([`>cible\n${s}\n`], 'cible.fas', {type: 'text/plain'})]);
+  });
+  await page.click('#btn-amorces');
+  await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
+  await expect(page.locator('#resultats th').nth(2)).toHaveText('Amorce Forward 5′-3′');
+  await expect(page.locator('#resultats th').nth(3)).toHaveText('Amorce Reverse 5′-3′');
+});
+
 test('les réglages d’amorces sont rangés, la sonde s’éteint quand on ne la veut pas', async ({page}) => {
   await page.setInputFiles('#fichiers', cheminFasta);
-  await expect(page.locator('#p-amorces fieldset')).toHaveCount(4);
-  await expect(page.locator('#p-amorces legend').nth(1)).toHaveText('Réaction');
-  await expect(page.locator('#p-amorces legend').nth(2)).toHaveText('Spécificité');
+  await expect(page.locator('#p-amorces fieldset')).toHaveCount(5);
+  await expect(page.locator('#p-amorces legend').nth(1)).toHaveText('Règles de forme');
+  await expect(page.locator('#p-amorces legend').nth(2)).toHaveText('Réaction');
+  await expect(page.locator('#p-amorces legend').nth(3)).toHaveText('Spécificité');
   await expect(page.locator('#p-amorces legend').first()).toHaveText('Amorces');
   await expect(page.locator('#bloc-sonde')).toHaveClass(/eteint/);
   await page.check('#opt-sonde');

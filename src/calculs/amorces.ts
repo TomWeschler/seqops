@@ -13,7 +13,7 @@
  *  moteur est remplaçable sans toucher au reste. */
 
 import {complementInverse, composition} from '../core/sequence.js';
-import {dimere, epingle, tmSelon} from '../core/thermo.js';
+import {autoAppariement, dimere, epingle, plusLongueEpingle, tmSelon} from '../core/thermo.js';
 import type {Conditions, MethodeTm, Structure} from '../core/thermo.js';
 import {ampliconsParasites, sitesHybridation} from '../core/specificite.js';
 import type {AmpliconParasite} from '../core/specificite.js';
@@ -46,6 +46,21 @@ export interface ParamsAmorces {
   /** ΔG maximal toléré pour un dimère, et pour un dimère qui touche le 3'. */
   readonly dgDimereMax?: number;
   readonly dgDimere3Max?: number;
+  /** Longueur maximale d'une répétition de la même base (4 : AAAAA interdit). */
+  readonly repetitionMax?: number;
+  /** Longueur maximale d'une suite de G, plus sévère que le cas général : les
+   *  G empilés forment des structures que les autres bases ne font pas. */
+  readonly repetitionGMax?: number;
+  /** Exiger un G ou un C en dernière base 3' — la « pince GC ». */
+  readonly fin3GC?: boolean;
+  /** Nombre maximal de G+C dans les cinq dernières bases : au-delà, l'amorce
+   *  s'accroche trop fort par le 3' et amorce n'importe où. */
+  readonly pinceMax?: number;
+  /** Règles d'OligoCalc, comptées en paires de bases : auto-appariement,
+   *  épingle, et complémentarité en 3'. */
+  readonly autoApparieMax?: number;
+  readonly epingleBpMax?: number;
+  readonly apparie3Max?: number;
   readonly maxPaires?: number;
   /** Chercher une sonde d'hydrolyse entre les deux amorces. Une paire sans
    *  sonde exploitable est alors écartée : en qPCR, elle ne sert à rien. */
@@ -145,7 +160,27 @@ export interface ResultatAmorces {
   readonly interrompu: boolean;
 }
 
-const REPETITION = /(A{5,}|C{5,}|G{5,}|T{5,})/;
+/** Les règles de forme, communes aux amorces et aux sondes. Elles rendent la
+ *  raison du refus, pour que l'interface puisse un jour dire pourquoi une
+ *  fenêtre a été écartée. */
+function repetitionTropLongue(oligo: string, max: number, maxG: number): boolean {
+  if (new RegExp(`([ACGT])\\1{${max}}`).test(oligo)) return true;
+  return new RegExp(`G{${maxG + 1}}`).test(oligo);
+}
+
+/** Nombre de G et de C dans les cinq dernières bases — la « pince GC ». */
+function pinceGC(oligo: string): number {
+  return (oligo.slice(-5).match(/[GC]/g) ?? []).length;
+}
+
+/** Les structures d'OligoCalc : auto-appariement, épingle, complémentarité 3'.
+ *  Rend vrai quand l'oligonucléotide en forme une au-dessus des seuils. */
+function structureInterdite(oligo: string, p: Required<ParamsAmorces>): boolean {
+  const auto = autoAppariement(oligo);
+  if (auto.bp > p.autoApparieMax) return true;
+  if (auto.touche3 && auto.bp > p.apparie3Max) return true;
+  return plusLongueEpingle(oligo).bp > p.epingleBpMax;
+}
 
 /** Une amorce dont le 3' se replie sur son propre 5', ou s'apparie avec une
  *  autre, part en dimère : on compte la plus longue complémentarité entre les
@@ -190,15 +225,21 @@ function evaluerSonde(
     // Les contrôles portent sur l'oligonucléotide RÉELLEMENT commandé : un
     // CCCC du brin direct devient un GGGG sur l'autre brin, et c'est ce GGGG
     // qui repliera la sonde.
-    if (REPETITION.test(oligo) || /G{4,}/.test(oligo)) continue;
+    if (repetitionTropLongue(oligo, p.repetitionMax, p.repetitionGMax)) continue;
     if (oligo.startsWith('G')) continue;              // le G en 5' éteint le fluorophore
+    // Plus de C que de G : c'est la règle des sondes d'hydrolyse, et elle est
+    // exigée, non plus seulement préférée.
+    if (compter(oligo, 'C') <= compter(oligo, 'G')) continue;
+    // Pas plus de trois G+C dans les cinq dernières bases, comme pour une amorce.
+    if (pinceGC(oligo) > p.pinceMax) continue;
+    if (structureInterdite(oligo, p)) continue;
     const c = composition(oligo);
     if (c.gc < 30 || c.gc > 80) continue;
     const tm = tmSelon(p.methodeTm, oligo, p.conditions, p.naMM);
     if (tm === null || tm < p.sondeTmMin || tm > p.sondeTmMax) continue;
     if (epingle(oligo).dg < p.dgEpingleMax) continue;
     retenues.push({brin, debut: debut + 1, fin: debut + longueur, seq: oligo, tm, gc: c.gc,
-                   plusDeC: compter(oligo, 'C') >= compter(oligo, 'G'),
+                   plusDeC: true,
                    dgAvecAmorces: 0, distanceAvant: 0, distanceArriere: 0, collee: 'F'});
   }
   return retenues;
@@ -212,16 +253,20 @@ function evaluer(
   const brut = seq.substr(debut, longueur);
   if (brut.length !== longueur) return null;
   if (!/^[ACGT]+$/.test(brut)) return null;              // pas d'ambiguïté dans une amorce
-  if (REPETITION.test(brut)) return null;
   const oligo = sens === 'F' ? brut : complementInverse(brut);
+  if (repetitionTropLongue(oligo, p.repetitionMax, p.repetitionGMax)) return null;
+  // La pince GC : la dernière base en 3' doit être un G ou un C pour que la
+  // polymérase parte franchement, mais pas plus de trois G+C sur les cinq
+  // dernières, sinon l'amorce s'accroche trop fort et amorce n'importe où.
+  if (p.fin3GC && !/[GC]$/.test(oligo)) return null;
+  const pince = pinceGC(oligo);
+  if (pince < 1 || pince > p.pinceMax) return null;
   const c = composition(oligo);
   const gc = c.gc;
   if (gc < p.gcMin || gc > p.gcMax) return null;
   const tm = tmSelon(p.methodeTm, oligo, p.conditions, p.naMM);
   if (tm === null || tm < p.tmMin || tm > p.tmMax) return null;
-  const cinq = oligo.slice(-5);
-  const pince = (cinq.match(/[GC]/g) ?? []).length;
-  if (pince < 1 || pince > 3) return null;                // ni décollée, ni collée
+  if (structureInterdite(oligo, p)) return null;
   // Structures : un ΔG dit si elles tiennent à la température de travail ; la
   // longueur du plus long appariement, non.
   const dgEpingle = epingle(oligo).dg;
@@ -239,13 +284,22 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
   executer(params: ParamsAmorces, ctx: Contexte): ResultatAmorces {
     const p: Required<ParamsAmorces> = {
       seq: params.seq.toUpperCase(),
-      longMin: params.longMin ?? 18, longMax: params.longMax ?? 25,
-      tmMin: params.tmMin ?? 57, tmMax: params.tmMax ?? 63, tmOptimale: params.tmOptimale ?? 60,
+      longMin: params.longMin ?? 18, longMax: params.longMax ?? 22,
+      tmMin: params.tmMin ?? 59, tmMax: params.tmMax ?? 61, tmOptimale: params.tmOptimale ?? 60,
       gcMin: params.gcMin ?? 40, gcMax: params.gcMax ?? 60,
-      ampliconMin: params.ampliconMin ?? 100, ampliconMax: params.ampliconMax ?? 1000,
+      ampliconMin: params.ampliconMin ?? 70, ampliconMax: params.ampliconMax ?? 200,
       deltaTmMax: params.deltaTmMax ?? 2,
+      repetitionMax: params.repetitionMax ?? 4,
+      repetitionGMax: params.repetitionGMax ?? 3,
+      fin3GC: params.fin3GC ?? true,
+      pinceMax: params.pinceMax ?? 3,
+      // Seuils d'OligoCalc : cinq paires font un auto-appariement, quatre font
+      // une épingle, et la complémentarité 3' se veut entre zéro et trois.
+      autoApparieMax: params.autoApparieMax ?? 4,
+      epingleBpMax: params.epingleBpMax ?? 3,
+      apparie3Max: params.apparie3Max ?? 3,
       conditions: params.conditions ?? {},
-      methodeTm: params.methodeTm ?? 'ppv',
+      methodeTm: params.methodeTm ?? 'sel',
       naMM: params.naMM ?? 50,
       // Seuils usuels d'un dessin d'amorces : une épingle sous −3 kcal/mol tient
       // encore à 60 °C, un dimère en 3' sous −5 amorce une élongation parasite.
@@ -258,9 +312,9 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
       maxPaires: params.maxPaires ?? 50,
       sonde: params.sonde ?? false,
       // Huit à dix degrés au-dessus des amorces : la règle de la qPCR.
-      sondeTmMin: params.sondeTmMin ?? 67, sondeTmMax: params.sondeTmMax ?? 73,
+      sondeTmMin: params.sondeTmMin ?? 69, sondeTmMax: params.sondeTmMax ?? 71,
       sondeTmOptimale: params.sondeTmOptimale ?? 70,
-      sondeLongMin: params.sondeLongMin ?? 20, sondeLongMax: params.sondeLongMax ?? 30,
+      sondeLongMin: params.sondeLongMin ?? 18, sondeLongMax: params.sondeLongMax ?? 32,
       sondeDistanceMax: params.sondeDistanceMax ?? 1
     };
     const seq = p.seq;

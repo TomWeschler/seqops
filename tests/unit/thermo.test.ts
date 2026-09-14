@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest';
-import {CONDITIONS_PCR, dg37, dimere, epingle, equivalentSodium, tm, tmAjusteAuSel, tmSelon}
+import {autoAppariement, CONDITIONS_PCR, dg37, dimere, epingle, equivalentSodium,
+        plusLongAppariement, plusLongueEpingle, tm, tmAjusteAuSel, tmSelon}
   from '../../src/core/thermo.js';
 import {tmPlusProcheVoisin} from '../../src/core/sequence.js';
 
@@ -127,5 +128,44 @@ describe('Tm ajustée au sel (OligoCalc)', () => {
       expect(v).toBeGreaterThan(40);
       expect(v).toBeLessThan(75);
     }
+  });
+});
+
+describe('structures comptées en paires de bases (règles OligoCalc)', () => {
+  it('trouve le plus long auto-appariement', () => {
+    // GGGGCCCC s'apparie sur lui-même sur quatre bases au moins.
+    expect(autoAppariement('AAAGGGGCCCCAAA').bp).toBeGreaterThanOrEqual(4);
+    // Une suite d'A ne s'apparie jamais avec elle-même.
+    expect(autoAppariement('AAAAAAAAAAAA').bp).toBe(0);
+  });
+
+  it('signale l’appariement qui met en jeu le 3’', () => {
+    // Les dernières bases s'apparient au début : c'est la 3' complémentarité.
+    const a = plusLongAppariement('GGGGAAAAAAAACCCC', 'GGGGAAAAAAAACCCC');
+    expect(a.bp).toBeGreaterThanOrEqual(4);
+    expect(a.touche3).toBe(true);
+  });
+
+  it('mesure la tige d’une épingle en paires de bases', () => {
+    // Tige de 6, boucle de 4.
+    expect(plusLongueEpingle('GGGGCCTTTTGGCCCC').bp).toBeGreaterThanOrEqual(4);
+    expect(plusLongueEpingle('AAAAAAAAAAAAAAAA').bp).toBe(0);
+  });
+
+  it('mesure la tige, et laisse l’appelant fixer le seuil', () => {
+    // GGGGCCCC referme une tige de deux paires sur une boucle de quatre : la
+    // structure existe, mais deux paires ne tiennent pas — c'est le seuil du
+    // protocole (quatre, chez OligoCalc) qui l'écarte, pas la détection.
+    expect(plusLongueEpingle('GGGGCCCC', 3).bp).toBe(2);
+  });
+
+  it('respecte la boucle minimale demandée', () => {
+    // Avec une boucle d'au moins six bases, la même séquence ne referme plus rien.
+    expect(plusLongueEpingle('GGGGCCCC', 6).bp).toBe(0);
+  });
+
+  it('refuse les séquences ambiguës plutôt que d’inventer', () => {
+    expect(autoAppariement('ACGTNACGT').bp).toBe(0);
+    expect(plusLongueEpingle('ACGTNACGT').bp).toBe(0);
   });
 });

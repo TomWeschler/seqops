@@ -139,7 +139,12 @@ footer a{color:var(--text-mid)}
 .palette .lettre.actuelle{border-color:var(--accent);background:var(--accent-dim)}
 
 /* ── Les réglages, rangés par ce qu'ils règlent ───────────────────────── */
-.reglages{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:.8rem}
+.reglages{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+          gap:.8rem;align-items:start}
+/* Sans min-width:0, un contenu large déborde de sa colonne et passe sous le
+   bloc voisin — ce qui s'est vu avec la note de spécificité. Mais pas de
+   coupure de mot : elle hachait « Méthode de Tm » lettre par lettre. */
+.reglages > fieldset{min-width:0}
 fieldset{border:1px solid var(--border2);border-radius:8px;padding:.7rem .9rem .9rem;
          background:var(--surface2)}
 fieldset.eteint,label.eteint,.reglage.eteint{opacity:.5}
@@ -152,7 +157,7 @@ legend{font:700 .64rem/1 var(--mono);letter-spacing:.14em;text-transform:upperca
        color:var(--accent);padding:0 .4rem}
 fieldset.eteint legend{color:var(--text-mid)}
 legend .case{font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit}
-.reglage{display:grid;grid-template-columns:1fr 5.5rem auto 5.5rem 2.5rem;
+.reglage{display:grid;grid-template-columns:minmax(7rem,1fr) 4.6rem auto 4.6rem minmax(2.5rem,auto);
          align-items:center;gap:.4rem;margin-top:.5rem}
 .reglage .quoi{font-size:.8rem;color:var(--text-mid)}
 .reglage input{width:100%}

@@ -119,18 +119,60 @@
         <legend>Amorces</legend>
         <div class="reglage">
           <span class="quoi">Température de fusion</span>
-          <input type="number" id="tm-min" value="57" step="1"><span class="tiret">–</span>
-          <input type="number" id="tm-max" value="63" step="1"><span class="unite">°C</span>
+          <input type="number" id="tm-min" value="59" step="1"><span class="tiret">–</span>
+          <input type="number" id="tm-max" value="61" step="1"><span class="unite">°C</span>
         </div>
         <div class="reglage">
           <span class="quoi">Longueur</span>
           <input type="number" id="lg-min" value="18" min="10" step="1"><span class="tiret">–</span>
-          <input type="number" id="lg-max" value="25" min="12" step="1"><span class="unite">nt</span>
+          <input type="number" id="lg-max" value="22" min="12" step="1"><span class="unite">nt</span>
         </div>
         <div class="reglage">
           <span class="quoi">Amplicon</span>
-          <input type="number" id="amp-min" value="100" min="50" step="10"><span class="tiret">–</span>
-          <input type="number" id="amp-max" value="800" min="60" step="10"><span class="unite">nt</span>
+          <input type="number" id="amp-min" value="70" min="30" step="10"><span class="tiret">–</span>
+          <input type="number" id="amp-max" value="200" min="50" step="10"><span class="unite">nt</span>
+        </div>
+        <div class="reglage">
+          <span class="quoi">% GC</span>
+          <input type="number" id="gc-min" value="40" min="0" max="100" step="1"><span class="tiret">–</span>
+          <input type="number" id="gc-max" value="60" min="0" max="100" step="1"><span class="unite">%</span>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Règles de forme</legend>
+        <div class="reglage">
+          <span class="quoi">Répétition d’une même base</span>
+          <input type="number" id="rep-max" value="4" min="2" max="10" step="1">
+          <span class="unite" style="grid-column:span 3">nt au plus</span>
+        </div>
+        <div class="reglage">
+          <span class="quoi">Suite de G</span>
+          <input type="number" id="rep-g-max" value="3" min="2" max="8" step="1">
+          <span class="unite" style="grid-column:span 3">nt au plus</span>
+        </div>
+        <div class="reglage">
+          <span class="quoi">G+C dans les 5 dernières bases</span>
+          <input type="number" id="pince-max" value="3" min="1" max="5" step="1">
+          <span class="unite" style="grid-column:span 3">au plus</span>
+        </div>
+        <label class="case" style="margin-top:.5rem">
+          <input type="checkbox" id="fin3-gc" checked> Terminer en 3′ par un G ou un C</label>
+        <p class="note" style="margin-top:.7rem">Auto-complémentarité, façon OligoCalc :</p>
+        <div class="reglage">
+          <span class="quoi">Auto-appariement</span>
+          <input type="number" id="auto-max" value="4" min="2" max="12" step="1">
+          <span class="unite" style="grid-column:span 3">pb au plus</span>
+        </div>
+        <div class="reglage">
+          <span class="quoi">Épingle à cheveux</span>
+          <input type="number" id="epingle-max" value="3" min="2" max="12" step="1">
+          <span class="unite" style="grid-column:span 3">pb au plus</span>
+        </div>
+        <div class="reglage">
+          <span class="quoi">Complémentarité en 3′</span>
+          <input type="number" id="apparie3-max" value="3" min="0" max="12" step="1">
+          <span class="unite" style="grid-column:span 3">pb au plus</span>
         </div>
       </fieldset>
 
@@ -139,8 +181,8 @@
         <div class="reglage">
           <span class="quoi">Méthode de Tm</span>
           <select id="tm-methode" style="grid-column:span 4">
-            <option value="ppv" selected>Plus proche voisin — sels de la réaction</option>
-            <option value="sel">Ajustée au sel — formule d’OligoCalc</option>
+            <option value="sel" selected>Ajustée au sel — formule d’OligoCalc</option>
+            <option value="ppv">Plus proche voisin — sels de la réaction</option>
           </select>
         </div>
         <div class="reglage">
@@ -148,7 +190,7 @@
           <input type="number" id="c-oligo" value="500" min="1" step="50">
           <span class="unite" style="grid-column:span 3">nM</span>
         </div>
-        <div class="reglage" id="reglage-na" hidden>
+        <div class="reglage" id="reglage-na">
           <span class="quoi">Na⁺ (OligoCalc)</span>
           <input type="number" id="c-na" value="50" min="1" step="10">
           <span class="unite" style="grid-column:span 3">mM</span>
@@ -182,13 +224,13 @@
         <legend><label class="case"><input type="checkbox" id="opt-sonde"> Sonde (qPCR)</label></legend>
         <div class="reglage">
           <span class="quoi">Température de fusion</span>
-          <input type="number" id="sonde-tm-min" value="67" step="1"><span class="tiret">–</span>
-          <input type="number" id="sonde-tm-max" value="73" step="1"><span class="unite">°C</span>
+          <input type="number" id="sonde-tm-min" value="69" step="1"><span class="tiret">–</span>
+          <input type="number" id="sonde-tm-max" value="71" step="1"><span class="unite">°C</span>
         </div>
         <div class="reglage">
           <span class="quoi">Longueur</span>
-          <input type="number" id="sonde-lg-min" value="20" min="12" step="1"><span class="tiret">–</span>
-          <input type="number" id="sonde-lg-max" value="30" min="15" step="1"><span class="unite">nt</span>
+          <input type="number" id="sonde-lg-min" value="18" min="12" step="1"><span class="tiret">–</span>
+          <input type="number" id="sonde-lg-max" value="32" min="15" step="1"><span class="unite">nt</span>
         </div>
         <div class="reglage">
           <span class="quoi">Écart maximal à F ou R</span>

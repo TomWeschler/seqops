@@ -2,7 +2,8 @@ import {describe, expect, it} from 'vitest';
 import {balayageAmorces} from '../../src/calculs/amorces.js';
 import type {Contexte} from '../../src/calculs/types.js';
 import {complementInverse} from '../../src/core/sequence.js';
-import {tm as tmPcr, tmAjusteAuSel} from '../../src/core/thermo.js';
+import {autoAppariement, plusLongueEpingle, tm as tmPcr, tmAjusteAuSel}
+  from '../../src/core/thermo.js';
 
 /** Une séquence pseudo-aléatoire reproductible : les épreuves doivent donner
  *  le même verdict à chaque exécution. */
@@ -36,20 +37,28 @@ describe('balayage d’amorces', () => {
       expect(p.amplicon).toBeLessThanOrEqual(600);
       expect(p.deltaTm).toBeLessThanOrEqual(2);
       for (const a of [p.avant, p.arriere]) {
+        // Les valeurs par défaut du laboratoire : 18–22 nt, 59–61 °C, 40–60 % GC.
         expect(a.seq.length).toBeGreaterThanOrEqual(18);
-        expect(a.seq.length).toBeLessThanOrEqual(25);
-        expect(a.tm).toBeGreaterThanOrEqual(57);
-        expect(a.tm).toBeLessThanOrEqual(63);
+        expect(a.seq.length).toBeLessThanOrEqual(22);
+        expect(a.tm).toBeGreaterThanOrEqual(59);
+        expect(a.tm).toBeLessThanOrEqual(61);
         expect(a.gc).toBeGreaterThanOrEqual(40);
         expect(a.gc).toBeLessThanOrEqual(60);
-        expect(a.seq).not.toMatch(/(A{5,}|C{5,}|G{5,}|T{5,})/);
+        // Pas plus de quatre fois la même base, pas plus de trois G d'affilée.
+        expect(a.seq).not.toMatch(/([ACGT])\1{4}/);
+        expect(a.seq).not.toMatch(/G{4}/);
+        // La dernière base en 3' est un G ou un C, mais pas plus de trois G+C
+        // dans les cinq dernières.
+        expect(a.seq).toMatch(/[GC]$/);
+        const pince = (a.seq.slice(-5).match(/[GC]/g) ?? []).length;
+        expect(pince).toBeGreaterThanOrEqual(1);
+        expect(pince).toBeLessThanOrEqual(3);
       }
       // L'amorce arrière est bien lue sur le brin inverse, à sa position.
       expect(p.arriere.seq).toBe(complementInverse(seq.slice(p.arriere.debut - 1, p.arriere.fin)));
       expect(p.avant.seq).toBe(seq.slice(p.avant.debut - 1, p.avant.fin));
-      // La Tm est celle des conditions de réaction, pas celle d'un tube de
-      // sodium pur : c'est tout l'objet du module thermo.
-      expect(p.avant.tm).toBeCloseTo(tmPcr(p.avant.seq) as number, 6);
+      // Par défaut, la Tm est celle d'OligoCalc, ajustée au sel.
+      expect(p.avant.tm).toBeCloseTo(tmAjusteAuSel(p.avant.seq, 50) as number, 6);
     }
   });
 
@@ -259,5 +268,54 @@ describe('méthode de Tm', () => {
     const premiere = (r: typeof bas) => r.paires[0]?.avant.seq ?? '';
     // À sodium différent, la fenêtre de Tm ne sélectionne pas les mêmes.
     expect(premiere(bas)).not.toBe(premiere(haut));
+  });
+});
+
+describe('règles de forme des oligonucléotides', () => {
+  const seq = sequence(2500, 91);
+  const r = balayageAmorces.executer({seq, sonde: true, maxPaires: 20}, contexte());
+
+  it('trouve des paires avec les réglages par défaut du laboratoire', () => {
+    expect(r.paires.length).toBeGreaterThan(0);
+    for (const p of r.paires) {
+      expect(p.amplicon).toBeGreaterThanOrEqual(70);
+      expect(p.amplicon).toBeLessThanOrEqual(200);
+    }
+  });
+
+  it('aucune amorce ni sonde ne forme de structure au-dessus des seuils', () => {
+    for (const p of r.paires) {
+      for (const oligo of [p.avant.seq, p.arriere.seq, p.sonde?.seq].filter(Boolean) as string[]) {
+        const auto = autoAppariement(oligo);
+        expect(auto.bp).toBeLessThanOrEqual(4);          // auto-appariement
+        if (auto.touche3) expect(auto.bp).toBeLessThanOrEqual(3);   // complémentarité 3'
+        expect(plusLongueEpingle(oligo).bp).toBeLessThanOrEqual(3); // épingle
+      }
+    }
+  });
+
+  it('les sondes portent plus de C que de G, et respectent leur 3’', () => {
+    const avecSonde = r.paires.filter((p) => p.sonde);
+    expect(avecSonde.length).toBeGreaterThan(0);
+    for (const {sonde: s} of avecSonde) {
+      const c = (s!.seq.match(/C/g) ?? []).length;
+      const g = (s!.seq.match(/G/g) ?? []).length;
+      expect(c).toBeGreaterThan(g);
+      expect(s!.seq).not.toMatch(/G{4}/);
+      expect((s!.seq.slice(-5).match(/[GC]/g) ?? []).length).toBeLessThanOrEqual(3);
+      expect(s!.seq.length).toBeGreaterThanOrEqual(18);
+      expect(s!.seq.length).toBeLessThanOrEqual(32);
+      expect(s!.tm).toBeGreaterThanOrEqual(69);
+      expect(s!.tm).toBeLessThanOrEqual(71);
+    }
+  });
+
+  it('chaque règle peut être desserrée, et alors elle rend davantage', () => {
+    const strict = balayageAmorces.executer({seq, maxPaires: 500}, contexte());
+    const sansPince = balayageAmorces.executer({seq, maxPaires: 500, fin3GC: false}, contexte());
+    // Exiger un G ou un C en 3' écarte forcément des candidats.
+    expect(sansPince.candidatsAvant).toBeGreaterThan(strict.candidatsAvant);
+    // Toutes celles du jeu strict finissent bien par G ou C.
+    for (const p of strict.paires) expect(p.avant.seq).toMatch(/[GC]$/);
   });
 });

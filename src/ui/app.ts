@@ -553,7 +553,7 @@ function rendreAmorces(r: ResultatAmorces): void {
     </div>
     <div class="tbl"><table><thead><tr>
     <th><input type="checkbox" id="tout-cocher" title="Tout sélectionner" checked></th>
-    <th>#</th><th>Amorce avant</th><th>Amorce arrière</th>
+    <th>#</th><th>Amorce Forward 5′-3′</th><th>Amorce Reverse 5′-3′</th>
     ${avecSonde ? '<th>Sonde</th>' : ''}
     <th>Amplicon</th><th>Tm F/R</th><th>ΔTm</th><th title="Énergie libre des structures, en kcal/mol : dimère des deux amorces, puis la pire épingle à cheveux. Plus c’est négatif, plus la structure tient.">ΔG dim./épin.</th>
     <th title="Sites d’hybridation de chaque amorce sur toutes les séquences ouvertes. 1 / 1, c’est ce qu’on veut.">Sites</th>
@@ -806,11 +806,11 @@ function classeurAmorces(doc: DocumentSeq, r: ResultatAmorces, choisies: readonl
     const p = r.paires[i];
     if (!p) continue;
     const n = i + 1;
-    lignes.push([`${base}_F${n}`, n, 'Amorce avant', p.avant.seq, '+', p.avant.seq,
+    lignes.push([`${base}_F${n}`, n, 'Amorce Forward', p.avant.seq, '+', p.avant.seq,
                  p.avant.debut, p.avant.fin, p.avant.seq.length,
                  arrondi(p.avant.tm), arrondi(p.avant.gc), arrondi(p.avant.dgEpingle),
                  p.amplicon, p.sitesAvant, doc.nom]);
-    lignes.push([`${base}_R${n}`, n, 'Amorce arrière', p.arriere.seq, '−',
+    lignes.push([`${base}_R${n}`, n, 'Amorce Reverse', p.arriere.seq, '−',
                  complementInverse(p.arriere.seq),
                  p.arriere.debut, p.arriere.fin, p.arriere.seq.length,
                  arrondi(p.arriere.tm), arrondi(p.arriere.gc), arrondi(p.arriere.dgEpingle),
@@ -1032,6 +1032,7 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
   // ceux qui comptent, plutôt que de laisser croire qu'ils agissent tous.
   const majMethodeTm = () => {
     const sel = ($('#tm-methode') as HTMLSelectElement).value === 'sel';
+    ($('#c-oligo') as HTMLInputElement).closest('.reglage')?.classList.toggle('eteint', sel);
     $('#reglage-na').hidden = !sel;
     for (const id of ['#c-k', '#c-tris', '#c-mg', '#c-dntp']) {
       const champ = ($(id) as HTMLInputElement).closest('.reglage');
@@ -1141,6 +1142,12 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
       tmMin: val('#tm-min'), tmMax: val('#tm-max'),
       tmOptimale: (val('#tm-min') + val('#tm-max')) / 2,
       longMin: val('#lg-min'), longMax: val('#lg-max'),
+      gcMin: val('#gc-min'), gcMax: val('#gc-max'),
+      repetitionMax: val('#rep-max'), repetitionGMax: val('#rep-g-max'),
+      pinceMax: val('#pince-max'),
+      fin3GC: ($('#fin3-gc') as HTMLInputElement).checked,
+      autoApparieMax: val('#auto-max'), epingleBpMax: val('#epingle-max'),
+      apparie3Max: val('#apparie3-max'),
       sonde: ($('#opt-sonde') as HTMLInputElement).checked,
       sondeTmMin: val('#sonde-tm-min'), sondeTmMax: val('#sonde-tm-max'),
       sondeTmOptimale: (val('#sonde-tm-min') + val('#sonde-tm-max')) / 2,
