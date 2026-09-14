@@ -516,6 +516,54 @@ test('les amorces s’exportent en classeur, tout ou ligne à ligne', async ({pa
   expect(octets.subarray(0, 2).toString()).toBe('PK');
 });
 
+test('le bouton NCBI prépare le FASTA et n’ouvre l’onglet que sur clic', async ({page}) => {
+  // window.open est remplacé : l'épreuve doit prouver ce que l'outil DEMANDE,
+  // sans jamais joindre le NCBI — et sans dépendre du réseau.
+  await page.addInitScript(() => {
+    (window as unknown as {ouvertures: string[]}).ouvertures = [];
+    window.open = ((url: string) => {
+      (window as unknown as {ouvertures: string[]}).ouvertures.push(String(url));
+      return null;
+    }) as typeof window.open;
+  });
+  const sortants: string[] = [];
+  page.on('request', (r) => {
+    if (new URL(r.url()).origin !== 'http://127.0.0.1:4173') sortants.push(r.url());
+  });
+  await page.reload();
+  await page.evaluate(() => {
+    let x = 53;
+    let s = '';
+    for (let i = 0; i < 1500; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
+    return window.seqops!.accepter([new File([`>cible\n${s}\n`], 'cible.fas', {type: 'text/plain'})]);
+  });
+  await page.fill('#amp-min', '150');
+  await page.fill('#amp-max', '400');
+  await page.click('#btn-amorces');
+  await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
+
+  // Rien ne part tant qu'on n'a pas cliqué, et le bouton suit la sélection.
+  const ouvertures = () => page.evaluate(() => (window as unknown as {ouvertures: string[]}).ouvertures);
+  expect(await ouvertures()).toEqual([]);
+  await page.uncheck('#tout-cocher');
+  await expect(page.locator('#btn-blast')).toBeDisabled();
+  await page.locator('#resultats .choix').first().check();
+  await expect(page.locator('#btn-blast')).toBeEnabled();
+
+  await page.click('#btn-blast');
+  const [url] = await ouvertures();
+  expect(url).toContain('https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastn');
+  expect(url).toContain('&QUERY=');
+  // Seule la requête est ajoutée : les réglages de la page restent ceux du NCBI.
+  expect(url).not.toContain('DATABASE=');
+  const requete = decodeURIComponent((url as string).split('&QUERY=')[1] as string);
+  expect(requete).toContain('>paire1_F');
+  // Le FASTA reste lisible dans la page, pour qui doit le coller à la main.
+  await expect(page.locator('#blast-texte')).toContainText('>paire1_F');
+  // Et la page elle-même n'a toujours joint personne.
+  expect(sortants).toEqual([]);
+});
+
 test('la spécificité est vérifiée sur les autres fichiers ouverts', async ({page}) => {
   // Deux fois la même séquence : chaque amorce s'hybride forcément deux fois.
   // C'est le cas du paralogue, et aucune paire ne doit passer.

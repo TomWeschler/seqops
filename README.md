@@ -11,6 +11,12 @@ politique de sécurité du contenu (`public/_headers`) l'interdit techniquement.
 Ce n'est pas une limite en attendant mieux, c'est la fonctionnalité principale
 sur un poste d'entreprise.
 
+Une seule exception, et elle est dans les mains de l'opérateur : le bouton
+« Vérifier sur NCBI » ouvre le formulaire blastn dans un autre onglet avec les
+oligonucléotides sélectionnés. L'application ne joint jamais le NCBI elle-même
+— elle prépare le FASTA, le clic ouvre l'onglet — et ce qui part, ce sont des
+oligonucléotides de vingt bases, pas la séquence de l'échantillon.
+
 ## Ce que ça fait aujourd'hui
 
 | | |

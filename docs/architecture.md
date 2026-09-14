@@ -6,7 +6,7 @@
 |---|---|
 | Hébergement gratuit | Site statique sur GitHub Pages, dépôt public. Pages ne servant pas d'en-têtes choisis, la CSP passe en balise `<meta>` et l'isolation d'origine par un service worker sans cache — chacun éprouvé. |
 | Utilisable sur un PC d'entreprise | Rien à installer, rien à administrer : un onglet. Pas de police ni de script tiers, donc rien à débloquer chez l'informatique. |
-| Les séquences ne sortent pas du poste | Aucun serveur d'application. Tout le calcul est fait par le navigateur, dans des travailleurs. La politique de sécurité du contenu interdit toute connexion sortante. |
+| Les séquences ne sortent pas du poste | Aucun serveur d'application. Tout le calcul est fait par le navigateur, dans des travailleurs. La politique de sécurité du contenu interdit toute connexion sortante. Seul le bouton « Vérifier sur NCBI » ouvre un site tiers, sur clic explicite, avec les seuls oligonucléotides choisis — l'application, elle, ne joint personne (`src/core/ncbi.ts`). |
 | Ouvrir `.ab1` et `.fas`, modifier, exporter | Lecture ABIF en TypeScript, lecture/écriture FASTA, rapports texte et HTML. Le fichier d'origine n'est jamais réécrit sur place : l'utilisateur enregistre une copie. |
 | Analyses longues | Un contrat de tâches (`src/jobs/types.ts`) : lancement non bloquant, avancement, arrêt, résultat partiel. Un seul exécuteur aujourd'hui, local. |
 | Code sous git | Dépôt privé, épreuves automatiques, déploiement continu depuis la branche principale. |
@@ -125,8 +125,20 @@ se transposeront tels quels.
 ce qu'on charge à côté : paralogue, vecteur, amplicon voisin. C'est ce qui
 attrape la deuxième bande du gel. Ce n'est PAS un BLAST : l'outil ne connaît que
 ce qu'on lui donne, et il ne peut pas savoir qu'une amorce s'hybride ailleurs
-dans un génome qu'il n'a pas. Interroger le NCBI supposerait d'y envoyer les
-séquences — c'est le niveau 2, et c'est une décision d'entreprise.
+dans un génome qu'il n'a pas. Interroger le NCBI depuis l'application
+supposerait d'y envoyer les séquences — c'est le niveau 2, et c'est une
+décision d'entreprise.
+
+Le bouton « Vérifier sur NCBI » est le contournement honnête de cette limite :
+il n'automatise rien et ne contacte rien. Il écrit le FASTA des
+oligonucléotides cochés, le met dans le presse-papiers, et ouvre le formulaire
+blastn ordinaire dans un autre onglet — avec la requête dans l'adresse quand
+elle y tient (au-delà de 2 000 caractères, une adresse risquerait d'être
+tronquée, donc de produire une requête fausse : on ouvre alors le formulaire nu
+et l'opérateur colle). Aucun réglage du NCBI n'est forcé : la base, le programme
+et le reste restent ceux que l'opérateur connaît. Pour un oligonucléotide de
+vingt bases, il faudra penser à choisir là-bas la tâche « blastn-short » —
+megablast, par défaut, ne trouve rien d'aussi court.
 
 ## Les moteurs open source, et ce qu'on en fera
 

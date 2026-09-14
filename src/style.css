@@ -182,6 +182,13 @@ legend .case{font:inherit;letter-spacing:inherit;text-transform:inherit;color:in
 .reglage .tiret{color:var(--text-dim);text-align:center}
 .reglage .unite{font:.72rem var(--mono);color:var(--text-dim)}
 
+/* Le FASTA proposé au NCBI : lisible et sélectionnable à la main, pour que le
+   collage reste possible même si le presse-papiers est refusé par le poste. */
+.fasta{font:.76rem/1.5 var(--mono);color:var(--text-mid);background:var(--surface2);
+       border:1px solid var(--border);border-radius:6px;padding:.5rem .6rem;
+       margin-top:.4rem;max-height:11rem;overflow:auto;white-space:pre;user-select:all}
+#blast-fasta summary{font-size:.78rem;color:var(--text-mid);cursor:pointer;margin-top:.5rem}
+
 /* ── Ambiguïtés et anomalies ──────────────────────────────────────────── */
 .ambiguite{margin-top:.6rem;padding:.6rem .7rem;background:var(--surface2);
            border:1px solid var(--accent);border-radius:8px}

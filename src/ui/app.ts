@@ -13,6 +13,7 @@ import {complementInverse, composition, corriger, prochaineAmbiguite, IUPAC}
 import type {Correction, OptionsCorrection} from '../core/sequence.js';
 import {rapportHtml, rapportTexte} from '../core/rapport.js';
 import {classeurXlsx} from '../core/xlsx.js';
+import {lienBlastn, oligosEnFasta} from '../core/ncbi.js';
 import type {Cellule} from '../core/xlsx.js';
 import type {ResultatAmorces, Sonde, TermeScore} from '../calculs/amorces.js';
 import type {ResultatAnalyse} from '../calculs/analyse.js';
@@ -549,8 +550,13 @@ function rendreAmorces(r: ResultatAmorces): void {
       avecSonde ? ` ; ${nb(r.candidatsSonde)} sondes candidates recensées, ${nb(r.sansSonde)} paires écartées faute de sonde` : ''}.</p>
     <div class="barre" style="margin-bottom:.4rem">
       <button id="btn-xlsx" class="primary">Exporter la sélection (.xlsx)</button>
+      <button id="btn-blast">Vérifier sur NCBI (blastn) ↗</button>
       <span class="note" id="bilan-selection"></span>
     </div>
+    <p class="note" id="note-blast">Le bouton NCBI ouvre blastn dans un autre onglet
+      avec les oligonucléotides sélectionnés : c'est la seule action de l'outil qui
+      sorte du poste, et elle n'a lieu que si vous cliquez.</p>
+    <div id="blast-fasta" hidden></div>
     <div class="tbl"><table><thead><tr>
     <th><input type="checkbox" id="tout-cocher" title="Tout sélectionner" checked></th>
     <th>#</th><th>Amorce Forward 5′-3′</th><th>Amorce Reverse 5′-3′</th>
@@ -684,6 +690,7 @@ function brancherSelection(r: ResultatAmorces): void {
       ? `${nb(n)} paire${n > 1 ? 's' : ''} — ${nb(oligos)} oligonucléotides à commander`
       : 'Aucune paire sélectionnée.';
     ($('#btn-xlsx') as HTMLButtonElement).disabled = n === 0;
+    ($('#btn-blast') as HTMLButtonElement).disabled = n === 0;
     const tout = $('#tout-cocher') as HTMLInputElement;
     tout.checked = n === cases().length && n > 0;
     tout.indeterminate = n > 0 && n < cases().length;
@@ -697,6 +704,31 @@ function brancherSelection(r: ResultatAmorces): void {
   box.addEventListener('change', (e) => {
     if ((e.target as HTMLElement).classList.contains('choix')) majBilan();
   });
+  // VÉRIFIER SUR NCBI. Deux précautions valent mieux qu'une : le FASTA part
+  // dans l'adresse quand il y tient, et il est de toute façon copié dans le
+  // presse-papiers, puis affiché sous le bouton. Si la page du NCBI ne reprend
+  // pas la requête — c'est son affaire, pas la nôtre —, il reste à coller.
+  $('#btn-blast').addEventListener('click', () => {
+    const liste = choisies();
+    if (!liste.length) return;
+    const fasta = oligosEnFasta(r.paires, liste);
+    const {url, prerempli} = lienBlastn(fasta);
+    const zone = $('#blast-fasta');
+    zone.hidden = false;
+    zone.innerHTML = `<details${prerempli ? '' : ' open'}><summary>FASTA envoyé (${
+      nb(fasta.split('\n').filter((l) => l.startsWith('>')).length)} oligonucléotides)</summary>` +
+      `<pre class="fasta" id="blast-texte">${ech(fasta.trim())}</pre></details>` +
+      `<p class="note" id="blast-etat">${prerempli
+        ? 'Déposé dans la fenêtre de requête du NCBI.'
+        : 'Trop long pour l’adresse : collez-le dans la fenêtre de requête.'}</p>`;
+    // La copie est un confort, pas une condition : elle échoue sans bruit sur
+    // un poste qui refuse le presse-papiers, et le texte reste lisible au-dessus.
+    void navigator.clipboard?.writeText(fasta).then(
+      () => { $('#blast-etat').textContent += ' Copié dans le presse-papiers.'; },
+      () => {});
+    globalThis.open(url, '_blank', 'noopener,noreferrer');
+  });
+
   $('#btn-xlsx').addEventListener('click', () => {
     const doc = docActif();
     const liste = choisies();
