@@ -331,6 +331,38 @@ describe('règles de forme des oligonucléotides', () => {
     }
   });
 
+  /** L'auto-complémentarité d'OligoCalc s'applique aussi aux sondes, avec des
+   *  seuils qui leur sont propres : serrer ceux de la sonde ne doit toucher
+   *  qu'elle, et serrer ceux des amorces ne doit pas la contraindre. */
+  it('les seuils de structure de la sonde sont les siens, et ils mordent', () => {
+    const commun = {seq, sonde: true, maxPaires: 40};
+    const large = balayageAmorces.executer(
+      {...commun, sondeAutoApparieMax: 6, sondeEpingleBpMax: 6}, contexte());
+    const serre = balayageAmorces.executer(
+      {...commun, sondeAutoApparieMax: 2, sondeEpingleBpMax: 2, sondeApparie3Max: 2}, contexte());
+    const sondes = (x: typeof large) => x.paires.map((p) => p.sonde?.seq ?? '');
+    expect(sondes(large).length).toBeGreaterThan(sondes(serre).length);
+    // Ce qui survit au réglage serré respecte bien les deux paires de bases.
+    for (const oligo of sondes(serre)) {
+      expect(autoAppariement(oligo).bp).toBeLessThanOrEqual(2);
+      expect(plusLongueEpingle(oligo).bp).toBeLessThanOrEqual(2);
+    }
+    // Les amorces, elles, gardent leurs propres seuils : serrer la sonde ne
+    // change pas le nombre de candidats amorces examinés.
+    expect(serre.candidatsAvant).toBe(large.candidatsAvant);
+  });
+
+  it('la suite de G de la sonde se règle à part de celle des amorces', () => {
+    const commun = {seq, sonde: true, maxPaires: 40};
+    // Deux G d'affilée au plus sur la sonde : plus sévère que le défaut.
+    const severe = balayageAmorces.executer({...commun, sondeRepetitionGMax: 2}, contexte());
+    for (const p of severe.paires) expect(p.sonde!.seq).not.toMatch(/G{3}/);
+    // Et les amorces suivent toujours leur propre réglage, plus permissif.
+    const permissif = balayageAmorces.executer(
+      {...commun, sondeRepetitionGMax: 2, repetitionGMax: 5}, contexte());
+    expect(permissif.candidatsAvant).toBeGreaterThanOrEqual(severe.candidatsAvant);
+  });
+
   it('chaque règle peut être desserrée, et alors elle rend davantage', () => {
     const strict = balayageAmorces.executer({seq, maxPaires: 500}, contexte());
     const sansPince = balayageAmorces.executer({seq, maxPaires: 500, fin3GC: false}, contexte());

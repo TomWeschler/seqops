@@ -157,8 +157,26 @@ legend{font:700 .64rem/1 var(--mono);letter-spacing:.14em;text-transform:upperca
        color:var(--accent);padding:0 .4rem}
 fieldset.eteint legend{color:var(--text-mid)}
 legend .case{font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit}
+/* Un sous-titre à l'intérieur d'un bloc de réglages : il sépare les familles
+   de règles — forme, auto-complémentarité — sans ouvrir un cadre de plus, et
+   il est le même dans le bloc des amorces et dans celui de la sonde, pour
+   qu'on voie d'un coup d'œil que ce sont les mêmes règles. */
+.sous-titre{margin-top:.9rem;padding-top:.6rem;border-top:1px solid var(--border);
+            font:700 .62rem/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;
+            color:var(--text-dim)}
 .reglage{display:grid;grid-template-columns:minmax(7rem,1fr) 4.6rem auto 4.6rem minmax(2.5rem,auto);
          align-items:center;gap:.4rem;margin-top:.5rem}
+/* Une ligne à champ unique : l'intitulé respire, au lieu d'être coupé en deux
+   pour laisser la place d'un second champ qui n'existe pas. */
+/* Colonnes fixes plutôt qu'automatiques : sinon le champ se déplace d'une
+   ligne à l'autre au gré de la longueur de l'intitulé, et la colonne des
+   valeurs n'existe plus visuellement. */
+.reglage.simple{grid-template-columns:minmax(8rem,1fr) 4.6rem 5.2rem}
+/* « nt au plus » sur une seule ligne : coupé en deux, il ressemblait à une
+   deuxième ligne de réglage. Les unités bavardes, elles, gardent le droit de
+   se replier. */
+.reglage.simple .unite{white-space:nowrap}
+.reglage .unite.libre{white-space:normal}
 .reglage .quoi{font-size:.8rem;color:var(--text-mid)}
 .reglage input{width:100%}
 .reglage .tiret{color:var(--text-dim);text-align:center}

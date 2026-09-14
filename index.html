@@ -140,40 +140,88 @@
       </fieldset>
 
       <fieldset>
-        <legend>Règles de forme</legend>
-        <div class="reglage">
+        <legend>Forme des amorces</legend>
+        <div class="reglage simple">
           <span class="quoi">Répétition d’une même base</span>
           <input type="number" id="rep-max" value="4" min="2" max="10" step="1">
-          <span class="unite" style="grid-column:span 3">nt au plus</span>
+          <span class="unite">nt au plus</span>
         </div>
-        <div class="reglage">
+        <div class="reglage simple">
           <span class="quoi">Suite de G</span>
           <input type="number" id="rep-g-max" value="4" min="2" max="8" step="1">
-          <span class="unite" style="grid-column:span 3">nt au plus</span>
+          <span class="unite">nt au plus</span>
         </div>
-        <div class="reglage">
+        <div class="reglage simple">
           <span class="quoi">G+C dans les 5 dernières bases</span>
           <input type="number" id="pince-max" value="3" min="1" max="5" step="1">
-          <span class="unite" style="grid-column:span 3">au plus</span>
+          <span class="unite">au plus</span>
         </div>
         <label class="case" style="margin-top:.5rem">
           <input type="checkbox" id="fin3-gc" checked> Terminer en 3′ par un G ou un C</label>
-        <p class="note" style="margin-top:.7rem">Auto-complémentarité, façon OligoCalc :</p>
-        <div class="reglage">
+        <p class="sous-titre">Auto-complémentarité, façon OligoCalc</p>
+        <div class="reglage simple">
           <span class="quoi">Auto-appariement</span>
           <input type="number" id="auto-max" value="4" min="2" max="12" step="1">
-          <span class="unite" style="grid-column:span 3">pb au plus</span>
+          <span class="unite">pb au plus</span>
         </div>
-        <div class="reglage">
+        <div class="reglage simple">
           <span class="quoi">Épingle à cheveux</span>
           <input type="number" id="epingle-max" value="3" min="2" max="12" step="1">
-          <span class="unite" style="grid-column:span 3">pb au plus</span>
+          <span class="unite">pb au plus</span>
         </div>
-        <div class="reglage">
+        <div class="reglage simple">
           <span class="quoi">Complémentarité en 3′</span>
           <input type="number" id="apparie3-max" value="3" min="0" max="12" step="1">
-          <span class="unite" style="grid-column:span 3">pb au plus</span>
+          <span class="unite">pb au plus</span>
         </div>
+      </fieldset>
+
+      <fieldset id="bloc-sonde" class="eteint">
+        <legend><label class="case"><input type="checkbox" id="opt-sonde" checked> Sonde (qPCR)</label></legend>
+        <div class="reglage">
+          <span class="quoi">Température de fusion</span>
+          <input type="number" id="sonde-tm-min" value="69" step="1"><span class="tiret">–</span>
+          <input type="number" id="sonde-tm-max" value="71" step="1"><span class="unite">°C</span>
+        </div>
+        <div class="reglage">
+          <span class="quoi">Longueur</span>
+          <input type="number" id="sonde-lg-min" value="18" min="12" step="1"><span class="tiret">–</span>
+          <input type="number" id="sonde-lg-max" value="32" min="15" step="1"><span class="unite">nt</span>
+        </div>
+        <div class="reglage simple">
+          <span class="quoi">Écart maximal à F ou R</span>
+          <input type="number" id="sonde-dist" value="1" min="0" max="200" step="1">
+          <span class="unite libre">nt (0 = collée)</span>
+        </div>
+        <p class="sous-titre">Forme de la sonde</p>
+        <div class="reglage simple">
+          <span class="quoi">Suite de G</span>
+          <input type="number" id="sonde-rep-g-max" value="3" min="2" max="8" step="1">
+          <span class="unite">nt au plus</span>
+        </div>
+        <div class="reglage simple">
+          <span class="quoi">G+C dans les 5 dernières bases</span>
+          <input type="number" id="sonde-pince-max" value="3" min="1" max="5" step="1">
+          <span class="unite">au plus</span>
+        </div>
+        <p class="sous-titre">Auto-complémentarité, façon OligoCalc</p>
+        <div class="reglage simple">
+          <span class="quoi">Auto-appariement</span>
+          <input type="number" id="sonde-auto-max" value="4" min="2" max="12" step="1">
+          <span class="unite">pb au plus</span>
+        </div>
+        <div class="reglage simple">
+          <span class="quoi">Épingle à cheveux</span>
+          <input type="number" id="sonde-epingle-max" value="3" min="2" max="12" step="1">
+          <span class="unite">pb au plus</span>
+        </div>
+        <div class="reglage simple">
+          <span class="quoi">Complémentarité en 3′</span>
+          <input type="number" id="sonde-apparie3-max" value="3" min="0" max="12" step="1">
+          <span class="unite">pb au plus</span>
+        </div>
+        <p class="note">Toujours appliqué, sans réglage : jamais de G en première
+          base, et plus de C que de G.</p>
       </fieldset>
 
       <fieldset>
@@ -185,15 +233,15 @@
             <option value="ppv">Plus proche voisin — sels de la réaction</option>
           </select>
         </div>
-        <div class="reglage">
+        <div class="reglage simple">
           <span class="quoi">Amorce</span>
           <input type="number" id="c-oligo" value="500" min="1" step="50">
-          <span class="unite" style="grid-column:span 3">nM</span>
+          <span class="unite">nM</span>
         </div>
-        <div class="reglage" id="reglage-na">
+        <div class="reglage simple" id="reglage-na">
           <span class="quoi">Na⁺ (OligoCalc)</span>
           <input type="number" id="c-na" value="50" min="1" step="10">
-          <span class="unite" style="grid-column:span 3">mM</span>
+          <span class="unite">mM</span>
         </div>
         <div class="reglage">
           <span class="quoi">K⁺ / Tris</span>
@@ -209,10 +257,10 @@
 
       <fieldset>
         <legend>Spécificité</legend>
-        <div class="reglage">
+        <div class="reglage simple">
           <span class="quoi">Mésappariements tolérés</span>
           <input type="number" id="spec-mes" value="3" min="0" max="8" step="1">
-          <span class="unite" style="grid-column:span 3">hors 3′, qui doit être parfait</span>
+          <span class="unite libre">hors 3′, qui doit être parfait</span>
         </div>
         <label class="case" style="margin-top:.5rem">
           <input type="checkbox" id="spec-exiger" checked>
@@ -220,24 +268,6 @@
         <p class="note" id="spec-cibles">Vérifiée sur la séquence en cours.</p>
       </fieldset>
 
-      <fieldset id="bloc-sonde" class="eteint">
-        <legend><label class="case"><input type="checkbox" id="opt-sonde" checked> Sonde (qPCR)</label></legend>
-        <div class="reglage">
-          <span class="quoi">Température de fusion</span>
-          <input type="number" id="sonde-tm-min" value="69" step="1"><span class="tiret">–</span>
-          <input type="number" id="sonde-tm-max" value="71" step="1"><span class="unite">°C</span>
-        </div>
-        <div class="reglage">
-          <span class="quoi">Longueur</span>
-          <input type="number" id="sonde-lg-min" value="18" min="12" step="1"><span class="tiret">–</span>
-          <input type="number" id="sonde-lg-max" value="32" min="15" step="1"><span class="unite">nt</span>
-        </div>
-        <div class="reglage">
-          <span class="quoi">Écart maximal à F ou R</span>
-          <input type="number" id="sonde-dist" value="1" min="0" max="200" step="1">
-          <span class="unite" style="grid-column:span 2">nt (0 = collée)</span>
-        </div>
-      </fieldset>
     </div>
     <div class="barre">
       <button id="btn-amorces" class="primary">Chercher des amorces</button>

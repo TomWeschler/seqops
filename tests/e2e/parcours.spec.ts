@@ -564,6 +564,14 @@ test('les valeurs par défaut sont celles du laboratoire', async ({page}) => {
   await expect(page.locator('#fin3-gc')).toBeChecked();
   // La qPCR est le cas courant du laboratoire : la sonde est demandée d'emblée.
   await expect(page.locator('#opt-sonde')).toBeChecked();
+  // La sonde a ses propres seuils de forme : trois G d'affilée au plus, là où
+  // une amorce en tolère quatre, et l'auto-complémentarité d'OligoCalc.
+  for (const [champ, valeur] of Object.entries({
+    '#sonde-rep-g-max': '3', '#sonde-pince-max': '3',
+    '#sonde-auto-max': '4', '#sonde-epingle-max': '3', '#sonde-apparie3-max': '3'
+  })) {
+    await expect(page.locator(champ)).toHaveValue(valeur);
+  }
   // La Tm ajustée au sel est la méthode par défaut, et son champ est visible.
   await expect(page.locator('#tm-methode')).toHaveValue('sel');
   await expect(page.locator('#reglage-na')).toBeVisible();
@@ -621,10 +629,20 @@ test('les colonnes portent les noms du métier', async ({page}) => {
 test('les réglages d’amorces sont rangés, la sonde s’éteint quand on ne la veut pas', async ({page}) => {
   await page.setInputFiles('#fichiers', cheminFasta);
   await expect(page.locator('#p-amorces fieldset')).toHaveCount(5);
-  await expect(page.locator('#p-amorces legend').nth(1)).toHaveText('Règles de forme');
-  await expect(page.locator('#p-amorces legend').nth(2)).toHaveText('Réaction');
-  await expect(page.locator('#p-amorces legend').nth(3)).toHaveText('Spécificité');
+  // La sonde suit immédiatement la forme des amorces : les deux blocs portent
+  // les mêmes règles, on doit pouvoir les comparer sans faire défiler.
   await expect(page.locator('#p-amorces legend').first()).toHaveText('Amorces');
+  await expect(page.locator('#p-amorces legend').nth(1)).toHaveText('Forme des amorces');
+  await expect(page.locator('#p-amorces legend').nth(2)).toHaveText('Sonde (qPCR)');
+  await expect(page.locator('#p-amorces legend').nth(3)).toHaveText('Réaction');
+  await expect(page.locator('#p-amorces legend').nth(4)).toHaveText('Spécificité');
+  // L'auto-complémentarité se règle des deux côtés, sous le même intitulé.
+  await expect(page.locator('#p-amorces .sous-titre', {hasText: 'Auto-complémentarité'}))
+    .toHaveCount(2);
+  for (const champ of ['#sonde-auto-max', '#sonde-epingle-max', '#sonde-apparie3-max',
+                       '#sonde-rep-g-max', '#sonde-pince-max']) {
+    await expect(page.locator(`#bloc-sonde ${champ}`)).toBeVisible();
+  }
   // Cochée par défaut, donc allumée ; décocher l'éteint, recocher la rallume.
   await expect(page.locator('#bloc-sonde')).not.toHaveClass(/eteint/);
   await expect(page.locator('#sonde-dist')).toHaveValue('1');

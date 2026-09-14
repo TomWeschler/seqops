@@ -83,6 +83,14 @@ export interface ParamsAmorces {
    *  une sonde perdue au milieu de l'amplicon donne un signal plus tardif et
    *  plus faible. Il suffit qu'elle soit près de F OU de R. */
   readonly sondeDistanceMax?: number;
+  /** Les mêmes règles de forme que pour une amorce, mais réglées à part : une
+   *  sonde d'hydrolyse est plus longue (18–32 nt) et ne s'évalue pas avec les
+   *  mêmes seuils qu'un oligonucléotide de vingt bases. */
+  readonly sondeRepetitionGMax?: number;
+  readonly sondePinceMax?: number;
+  readonly sondeAutoApparieMax?: number;
+  readonly sondeEpingleBpMax?: number;
+  readonly sondeApparie3Max?: number;
   /** Les autres séquences ouvertes : paralogues, vecteur, second amplicon. On
    *  y cherche aussi les sites d'hybridation — c'est là que se cachent les
    *  bandes parasites. La cible elle-même est toujours vérifiée. */
@@ -198,11 +206,20 @@ function pinceGC(oligo: string): number {
 
 /** Les structures d'OligoCalc : auto-appariement, épingle, complémentarité 3'.
  *  Rend vrai quand l'oligonucléotide en forme une au-dessus des seuils. */
-function structureInterdite(oligo: string, p: Required<ParamsAmorces>): boolean {
+interface SeuilsStructure {
+  readonly autoApparieMax: number;
+  readonly epingleBpMax: number;
+  readonly apparie3Max: number;
+}
+
+/** Les seuils sont passés explicitement, et non lus dans les réglages : les
+ *  amorces et les sondes ont chacune les leurs, et la confusion des deux a
+ *  laissé croire que les sondes échappaient à la règle. */
+function structureInterdite(oligo: string, seuils: SeuilsStructure): boolean {
   const auto = autoAppariement(oligo);
-  if (auto.bp > p.autoApparieMax) return true;
-  if (auto.touche3 && auto.bp > p.apparie3Max) return true;
-  return plusLongueEpingle(oligo).bp > p.epingleBpMax;
+  if (auto.bp > seuils.autoApparieMax) return true;
+  if (auto.touche3 && auto.bp > seuils.apparie3Max) return true;
+  return plusLongueEpingle(oligo).bp > seuils.epingleBpMax;
 }
 
 /** Une amorce dont le 3' se replie sur son propre 5', ou s'apparie avec une
@@ -226,7 +243,10 @@ function complementariteTerminale(a: string, b: string, fenetre = 6): number {
  *  — elle ne commence jamais par un G : un G en 5' éteint le fluorophore qu'on
  *    y accroche, et la sonde ne rapporte plus rien ;
  *  — on choisit le brin qui porte le plus de C, pour la même raison ;
- *  — pas de GGGG, qui replie l'oligonucléotide sur lui-même.
+ *  — pas de GGGG, qui replie l'oligonucléotide sur lui-même ;
+ *  — et les mêmes règles de forme que pour une amorce — suite de G, pince
+ *    GC, auto-appariement, épingle, complémentarité 3' — mais avec leurs
+ *    propres seuils, réglables à part dans la section « Sonde ».
  *  C'est pourquoi elle a sa propre fonction, et non des bornes différentes
  *  passées à celle des amorces. */
 function evaluerSonde(
@@ -248,18 +268,22 @@ function evaluerSonde(
     // Les contrôles portent sur l'oligonucléotide RÉELLEMENT commandé : un
     // CCCC du brin direct devient un GGGG sur l'autre brin, et c'est ce GGGG
     // qui repliera la sonde.
-    // Les suites de G sont jugées plus sévèrement ici que sur une amorce, et
-    // sans suivre le réglage : un GGGG replie la sonde en quadruplexe, le
+    // Les suites de G ont leur propre réglage, plus sévère par défaut que
+    // celui des amorces : un GGGG replie la sonde en quadruplexe, le
     // fluorophore se retrouve contre l'extincteur et la sonde ne rapporte plus
     // rien. Une amorce, elle, serait seulement un peu moins efficace.
-    if (repetitionTropLongue(oligo, p.repetitionMax, Math.min(3, p.repetitionGMax))) continue;
+    if (repetitionTropLongue(oligo, p.repetitionMax, p.sondeRepetitionGMax)) continue;
     if (oligo.startsWith('G')) continue;              // le G en 5' éteint le fluorophore
     // Plus de C que de G : c'est la règle des sondes d'hydrolyse, et elle est
     // exigée, non plus seulement préférée.
     if (compter(oligo, 'C') <= compter(oligo, 'G')) continue;
     // Pas plus de trois G+C dans les cinq dernières bases, comme pour une amorce.
-    if (pinceGC(oligo) > p.pinceMax) continue;
-    if (structureInterdite(oligo, p)) continue;
+    if (pinceGC(oligo) > p.sondePinceMax) continue;
+    // L'auto-complémentarité d'OligoCalc s'applique aussi à la sonde, avec ses
+    // propres seuils : une sonde repliée sur elle-même ne s'hybride pas.
+    if (structureInterdite(oligo, {autoApparieMax: p.sondeAutoApparieMax,
+                                   epingleBpMax: p.sondeEpingleBpMax,
+                                   apparie3Max: p.sondeApparie3Max})) continue;
     const c = composition(oligo);
     if (c.gc < 30 || c.gc > 80) continue;
     const tm = tmSelon(p.methodeTm, oligo, p.conditions, p.naMM);
@@ -370,7 +394,14 @@ export const balayageAmorces: Calcul<ParamsAmorces, ResultatAmorces> = {
       sondeTmMin: params.sondeTmMin ?? 69, sondeTmMax: params.sondeTmMax ?? 71,
       sondeTmOptimale: params.sondeTmOptimale ?? 70,
       sondeLongMin: params.sondeLongMin ?? 18, sondeLongMax: params.sondeLongMax ?? 32,
-      sondeDistanceMax: params.sondeDistanceMax ?? 1
+      sondeDistanceMax: params.sondeDistanceMax ?? 1,
+      // Une sonde tolère un G de moins d'affilée qu'une amorce : c'est elle
+      // que le quadruplexe éteint.
+      sondeRepetitionGMax: params.sondeRepetitionGMax ?? 3,
+      sondePinceMax: params.sondePinceMax ?? 3,
+      sondeAutoApparieMax: params.sondeAutoApparieMax ?? 4,
+      sondeEpingleBpMax: params.sondeEpingleBpMax ?? 3,
+      sondeApparie3Max: params.sondeApparie3Max ?? 3
     };
     const seq = p.seq;
     const L = seq.length;

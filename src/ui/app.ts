@@ -1242,6 +1242,9 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
       sondeTmOptimale: (val('#sonde-tm-min') + val('#sonde-tm-max')) / 2,
       sondeLongMin: val('#sonde-lg-min'), sondeLongMax: val('#sonde-lg-max'),
       sondeDistanceMax: val('#sonde-dist'),
+      sondeRepetitionGMax: val('#sonde-rep-g-max'), sondePinceMax: val('#sonde-pince-max'),
+      sondeAutoApparieMax: val('#sonde-auto-max'), sondeEpingleBpMax: val('#sonde-epingle-max'),
+      sondeApparie3Max: val('#sonde-apparie3-max'),
       conditions: {
         oligoNM: val('#c-oligo'), kMM: val('#c-k'), trisMM: val('#c-tris'),
         mgMM: val('#c-mg'), dntpMM: val('#c-dntp')
