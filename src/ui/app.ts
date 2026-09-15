@@ -14,8 +14,12 @@ import type {Correction, OptionsCorrection} from '../core/sequence.js';
 import {rapportHtml, rapportTexte} from '../core/rapport.js';
 import {classeurXlsx} from '../core/xlsx.js';
 import {lienBlastn, oligosEnFasta} from '../core/ncbi.js';
+import {lireResultatsBlast, sitesComplets} from '../core/blast.js';
+import type {RapportBlast} from '../core/blast.js';
+import {nomOligo} from '../core/nomenclature.js';
+import type {RoleOligo} from '../core/nomenclature.js';
 import type {Cellule} from '../core/xlsx.js';
-import type {ResultatAmorces, Sonde, TermeScore} from '../calculs/amorces.js';
+import type {PaireAmorces, ResultatAmorces, Sonde, TermeScore} from '../calculs/amorces.js';
 import type {ResultatAnalyse} from '../calculs/analyse.js';
 import {ExecuteurLocal} from '../jobs/executeur-local.js';
 import type {Executeur, Tache} from '../jobs/types.js';
@@ -489,6 +493,46 @@ function grapheGC(r: ResultatAnalyse): string {
     Échelle verticale 0–100 %.</p>`;
 }
 
+/** Le dernier fichier de résultats BLAST relu. Il est oublié dès qu'une
+ *  nouvelle recherche est lancée : les paires changent de numéro, et un
+ *  rapprochement fait sur d'anciens numéros serait faux sans en avoir l'air. */
+let blast: RapportBlast | null = null;
+
+/** Ce que le fichier BLAST dit d'une paire, en une cellule. Trois comptes, et
+ *  le détail au survol. Un point quand l'oligonucléotide n'était pas dans le
+ *  fichier : ne pas avoir été cherché n'est pas la même chose que n'avoir
+ *  aucun site, et c'est exactement la confusion que fait la page du NCBI. */
+function celluleBlast(p: PaireAmorces, rang: number): string {
+  if (!blast) return '';
+  const roles: {role: RoleOligo; oligo: string | undefined}[] = [
+    {role: 'F', oligo: p.avant.seq},
+    {role: 'R', oligo: p.arriere.seq},
+    {role: 'sonde', oligo: p.sonde?.seq}
+  ];
+  const morceaux: string[] = [];
+  const detail: string[] = [];
+  let alerte = false;
+  for (const {role, oligo} of roles) {
+    if (!oligo) continue;
+    const etiquette = role === 'sonde' ? 'S' : role;
+    const bilan = blast.parOligo.get(nomOligo(rang, role));
+    if (!bilan) { morceaux.push(`${etiquette} ·`); continue; }
+    const complets = sitesComplets(bilan, oligo.length);
+    if (complets.length > 1) alerte = true;
+    morceaux.push(`${etiquette} ${complets.length}`);
+    detail.push(`${nomOligo(rang, role)} : ${complets.length} site(s) couvrant tout ` +
+      `l’oligonucléotide, sur ${bilan.sites.length} alignement(s)` +
+      (complets.length
+        ? ` — ${complets.slice(0, 3).map((x) => `${x.sujet}${x.organisme ? ` (${x.organisme})` : ''}`).join(', ')}`
+        : ''));
+  }
+  if (!morceaux.length) return '<td class="mono">—</td>';
+  // Une ligne par rôle : mis bout à bout, les séparateurs se replient n'importe
+  // où et « F 1 · R 0 » finit coupé en deux colonnes illisibles.
+  return `<td class="mono${alerte ? ' rouge' : ''}" title="${ech(detail.join('\n'))}">` +
+         morceaux.map((x) => ech(x)).join('<br>') + '</td>';
+}
+
 function rendreAmorces(r: ResultatAmorces): void {
   const box = $('#resultats');
   if (!r.paires.length) {
@@ -532,8 +576,8 @@ function rendreAmorces(r: ResultatAmorces): void {
   // servent, et les confondre fait commander l'oligonucléotide à l'envers.
   const complement = (oligo: string) =>
     `<br><span class="note complement">sur le brin + : ${ech(complementInverse(oligo))}</span>`;
-  const celluleSonde = (s?: Sonde) => s
-    ? `<td class="mono">${ech(s.seq)}${s.brin === '−' ? complement(s.seq) : ''}
+  const celluleSonde = (s: Sonde | undefined, rang: number) => s
+    ? `<td class="mono"><span class="nom-oligo">${nomOligo(rang, 'sonde')}</span>${ech(s.seq)}${s.brin === '−' ? complement(s.seq) : ''}
        <br><span class="note">brin ${s.brin} · ${nb(s.debut)}..${nb(s.fin)}
        · Tm ${nb(s.tm, 1)} °C · GC ${nb(s.gc, 0)} %<br>
        ${s.collee === 'F'
@@ -551,6 +595,8 @@ function rendreAmorces(r: ResultatAmorces): void {
     <div class="barre" style="margin-bottom:.4rem">
       <button id="btn-xlsx" class="primary">Exporter la sélection (.xlsx)</button>
       <button id="btn-blast">Vérifier sur NCBI (blastn) ↗</button>
+      <button id="btn-import-blast">Importer les résultats BLAST…</button>
+      <input type="file" id="fichier-blast" accept=".csv,.txt,.tsv,.json,.out" hidden>
       <span class="note" id="bilan-selection"></span>
     </div>
     <p class="note" id="note-blast">Le bouton NCBI ouvre blastn dans un autre onglet
@@ -568,14 +614,15 @@ function rendreAmorces(r: ResultatAmorces): void {
     ${avecSonde ? '<th>Sonde</th>' : ''}
     <th>Amplicon</th><th>Tm F/R</th><th>ΔTm</th><th title="Énergie libre des structures, en kcal/mol : dimère des deux amorces, puis la pire épingle à cheveux. Plus c’est négatif, plus la structure tient.">ΔG dim./épin.</th>
     <th title="Sites d’hybridation de chaque amorce sur toutes les séquences ouvertes. 1 / 1, c’est ce qu’on veut.">Sites</th>
+    ${blast ? '<th title="Sites trouvés par BLAST couvrant tout l’oligonucléotide. Un point : cet oligonucléotide n’était pas dans le fichier importé.">BLAST</th>' : ''}
     <th>Score</th></tr></thead><tbody>` +
     r.paires.map((p, i) => `<tr>
       <td><input type="checkbox" class="choix" data-paire="${i}" checked></td>
       <td class="mono">${i + 1}</td>
-      <td class="mono">${ech(p.avant.seq)}<br><span class="note">${nb(p.avant.debut)}..${nb(p.avant.fin)} · GC ${nb(p.avant.gc, 0)} %</span></td>
-      <td class="mono">${ech(p.arriere.seq)}${complement(p.arriere.seq)}
+      <td class="mono"><span class="nom-oligo">${nomOligo(i + 1, 'F')}</span>${ech(p.avant.seq)}<br><span class="note">${nb(p.avant.debut)}..${nb(p.avant.fin)} · GC ${nb(p.avant.gc, 0)} %</span></td>
+      <td class="mono"><span class="nom-oligo">${nomOligo(i + 1, 'R')}</span>${ech(p.arriere.seq)}${complement(p.arriere.seq)}
         <br><span class="note">${nb(p.arriere.debut)}..${nb(p.arriere.fin)} · GC ${nb(p.arriere.gc, 0)} %</span></td>
-      ${avecSonde ? celluleSonde(p.sonde) : ''}
+      ${avecSonde ? celluleSonde(p.sonde, i + 1) : ''}
       <td class="mono">${nb(p.amplicon)} nt</td>
       <td class="mono">${nb(p.avant.tm, 1)} / ${nb(p.arriere.tm, 1)}</td>
       <td class="mono">${nb(p.deltaTm, 1)}</td>
@@ -586,6 +633,7 @@ function rendreAmorces(r: ResultatAmorces): void {
           ? `<br><span class="rouge note">${nb(p.parasites.length)} produit${p.parasites.length > 1 ? 's' : ''} parasite${p.parasites.length > 1 ? 's' : ''} : ` +
             ech(p.parasites.slice(0, 2).map((x) => `${x.taille} pb sur ${x.source}`).join(', ')) + '</span>'
           : ''}</td>
+      ${celluleBlast(p, i + 1)}
       <td class="mono score" data-detail="${i}" tabindex="0"
           aria-label="Score ${nb(p.score, 2)}, détail au survol">${nb(p.score, 2)}</td></tr>`).join('') +
     '</tbody></table></div>';
@@ -732,6 +780,31 @@ function brancherSelection(r: ResultatAmorces): void {
       () => { $('#blast-etat').textContent += ' Copié dans le presse-papiers.'; },
       () => {});
     globalThis.open(url, '_blank', 'noopener,noreferrer');
+  });
+
+  // IMPORT DES RÉSULTATS BLAST. Le fichier est lu dans le navigateur, comme
+  // tout le reste ; le rapprochement se fait sur le nom des requêtes, que
+  // c'est l'outil lui-même qui a écrit dans le FASTA.
+  $('#btn-import-blast').addEventListener('click', () => $('#fichier-blast').click());
+  $('#fichier-blast').addEventListener('change', (e) => {
+    const f = (e.target as HTMLInputElement).files?.[0];
+    if (!f) return;
+    void f.text().then((texte) => {
+      const rapport = lireResultatsBlast(texte);
+      blast = rapport.parOligo.size ? rapport : null;
+      // Le message est rendu avant tout : un fichier qui n'a rien donné doit
+      // dire pourquoi, sinon on croit que les amorces sont propres.
+      const attendus = [...rapport.parOligo.keys()];
+      rendreAmorces(r);
+      $('#resultats').insertAdjacentHTML('afterbegin', blast
+        ? `<p class="note">Résultats BLAST de <b>${ech(f.name)}</b> (${rapport.format}) : ` +
+          `${nb(attendus.length)} oligonucléotides reconnus, ${nb(rapport.lignes)} alignements` +
+          `${rapport.sansNom ? `, ${nb(rapport.sansNom)} lignes non rattachées` : ''}.</p>`
+        : `<p class="err">Aucun nom d’oligonucléotide reconnu dans ${ech(f.name)}. ` +
+          'Le CSV du NCBI ne contient parfois que ses propres identifiants (Query_276888) : ' +
+          'prenez « Hit table (text) » ou « Single-file JSON », qui gardent le titre des requêtes.</p>');
+    });
+    (e.target as HTMLInputElement).value = '';
   });
 
   $('#btn-xlsx').addEventListener('click', () => {
@@ -920,33 +993,48 @@ const IUPAC_LISIBLE = (lettre: string): string => {
  *  oligonucléotide — F, R, et la sonde quand il y en a une — parce que c'est
  *  ainsi qu'on les commande, et non une ligne par paire. */
 function classeurAmorces(doc: DocumentSeq, r: ResultatAmorces, choisies: readonly number[]): Cellule[][] {
-  const base = doc.nom.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 20);
   const lignes: Cellule[][] = [[
     'Nom', 'Paire', 'Rôle', 'Séquence 5\u2032→3\u2032 (à commander)', 'Brin',
     'Sur le brin + (5\u2032→3\u2032)', 'Début', 'Fin', 'Longueur',
-    'Tm (°C)', 'GC (%)', 'ΔG épingle', 'Amplicon (nt)', 'Sites', 'Fichier'
+    'Tm (°C)', 'GC (%)', 'ΔG épingle', 'Amplicon (nt)', 'Sites',
+    'BLAST : sites complets', 'BLAST : alignements', 'BLAST : sujets', 'Fichier'
   ]];
   const arrondi = (v: number, d = 1) => Math.round(v * 10 ** d) / 10 ** d;
+
+  /** Les trois colonnes BLAST d'un oligonucléotide. Vides tant qu'aucun
+   *  fichier n'a été importé — une case vide se lit « pas vérifié », un zéro
+   *  se lirait « vérifié, rien trouvé », et ce n'est pas la même chose. */
+  const colonnesBlast = (rang: number, role: RoleOligo, oligo: string): Cellule[] => {
+    const bilan = blast?.parOligo.get(nomOligo(rang, role));
+    if (!bilan) return [null, null, null];
+    const complets = sitesComplets(bilan, oligo.length);
+    return [complets.length, bilan.sites.length,
+            complets.slice(0, 5).map((x) => x.sujet).join(' ; ') || null];
+  };
 
   for (const i of choisies) {
     const p = r.paires[i];
     if (!p) continue;
     const n = i + 1;
-    lignes.push([`${base}_F${n}`, n, 'Amorce Forward', p.avant.seq, '+', p.avant.seq,
+    lignes.push([nomOligo(n, 'F'), n, 'Amorce Forward', p.avant.seq, '+', p.avant.seq,
                  p.avant.debut, p.avant.fin, p.avant.seq.length,
                  arrondi(p.avant.tm), arrondi(p.avant.gc), arrondi(p.avant.dgEpingle),
-                 p.amplicon, p.sitesAvant, doc.nom]);
-    lignes.push([`${base}_R${n}`, n, 'Amorce Reverse', p.arriere.seq, '−',
+                 p.amplicon, p.sitesAvant,
+                 ...colonnesBlast(n, 'F', p.avant.seq), doc.nom]);
+    lignes.push([nomOligo(n, 'R'), n, 'Amorce Reverse', p.arriere.seq, '−',
                  complementInverse(p.arriere.seq),
                  p.arriere.debut, p.arriere.fin, p.arriere.seq.length,
                  arrondi(p.arriere.tm), arrondi(p.arriere.gc), arrondi(p.arriere.dgEpingle),
-                 p.amplicon, p.sitesArriere, doc.nom]);
+                 p.amplicon, p.sitesArriere,
+                 ...colonnesBlast(n, 'R', p.arriere.seq), doc.nom]);
     if (p.sonde) {
-      lignes.push([`${base}_S${n}`, n, `Sonde (collée à ${p.sonde.collee})`, p.sonde.seq, p.sonde.brin,
+      lignes.push([nomOligo(n, 'sonde'), n, `Sonde (collée à ${p.sonde.collee})`,
+                   p.sonde.seq, p.sonde.brin,
                    p.sonde.brin === '+' ? p.sonde.seq : complementInverse(p.sonde.seq),
                    p.sonde.debut, p.sonde.fin, p.sonde.seq.length,
                    arrondi(p.sonde.tm), arrondi(p.sonde.gc), null,
-                   p.amplicon, null, doc.nom]);
+                   p.amplicon, null,
+                   ...colonnesBlast(n, 'sonde', p.sonde.seq), doc.nom]);
     }
   }
   return lignes;
@@ -1298,6 +1386,9 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
         .filter((d) => d.seq.length > 0)
     };
     $('#resultats').innerHTML = '<p class="vide">Recherche en cours…</p>';
+    // Les numéros de paires vont changer : un rapprochement BLAST fait sur les
+    // anciens serait faux sans en avoir l'air. On l'oublie.
+    blast = null;
     const id = executeur.lancer<ResultatAmorces>('amorces/balayage', params, {
       libelle: `Amorces — ${doc.nom} (${nb(seq.length)} nt)`,
       surFin: (t) => {

@@ -16,6 +16,7 @@
 
 import {ecrireFasta} from './fasta.js';
 import type {Enregistrement} from './fasta.js';
+import {nomOligo} from './nomenclature.js';
 
 export const ADRESSE_BLASTN =
   'https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastn&PAGE_TYPE=BlastSearch&LINK_LOC=blasthome';
@@ -46,10 +47,11 @@ export function oligosEnFasta(
     const p = paires[i];
     if (!p) continue;
     const n = i + 1;
-    enrs.push({id: `paire${n}_F`, description: `${p.avant.debut}..${p.avant.fin}`, seq: p.avant.seq});
-    enrs.push({id: `paire${n}_R`, description: `${p.arriere.debut}..${p.arriere.fin}`, seq: p.arriere.seq});
+    enrs.push({id: nomOligo(n, 'F'), description: `${p.avant.debut}..${p.avant.fin}`, seq: p.avant.seq});
+    enrs.push({id: nomOligo(n, 'R'), description: `${p.arriere.debut}..${p.arriere.fin}`, seq: p.arriere.seq});
     if (p.sonde) {
-      enrs.push({id: `paire${n}_sonde`, description: `${p.sonde.debut}..${p.sonde.fin}`, seq: p.sonde.seq});
+      enrs.push({id: nomOligo(n, 'sonde'), description: `${p.sonde.debut}..${p.sonde.fin}`,
+                 seq: p.sonde.seq});
     }
   }
   return ecrireFasta(enrs);

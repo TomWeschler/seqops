@@ -568,6 +568,81 @@ test('le bouton NCBI prépare le FASTA et n’ouvre l’onglet que sur clic', as
   expect(sortants).toEqual([]);
 });
 
+/** Le fichier tel que le NCBI le rend : des commentaires « # Query » qui
+ *  portent nos noms, puis les lignes d'alignement. */
+const HIT_TABLE = [
+  '# blastn',
+  '# Query: lcl|Query_1 paire1_F 100..121',
+  '# Fields: query acc.ver, subject acc.ver, % identity, alignment length, mismatches, gap opens, q. start, q. end, s. start, s. end, evalue, bit score',
+  '# 2 hits found',
+  'Query_1\tNG_012246.1\t100.000\t30\t0\t0\t1\t22\t1\t22\t1e-06\t44.1',
+  'Query_1\tXM_099999.1\t100.000\t12\t0\t0\t1\t12\t5\t16\t433\t24.3',
+  '# Query: lcl|Query_2 paire1_R 300..321',
+  '# 0 hits found',
+  ''
+].join('\n');
+const cheminBlast = join(dossier, 'hit-table.txt');
+writeFileSync(cheminBlast, HIT_TABLE);
+
+test('les résultats BLAST se rapprochent des paires par leur nom', async ({page}) => {
+  await page.evaluate(() => {
+    let x = 53;
+    let s = '';
+    for (let i = 0; i < 1500; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
+    return window.seqops!.accepter([new File([`>cible\n${s}\n`], 'cible.fas', {type: 'text/plain'})]);
+  });
+  await page.fill('#amp-min', '150');
+  await page.fill('#amp-max', '400');
+  await page.click('#btn-amorces');
+  await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
+
+  // Les noms sont les mêmes des deux côtés : c'est eux qui font le lien.
+  await expect(page.locator('#resultats .nom-oligo').first()).toHaveText('paire1_F');
+  // Pas de colonne BLAST tant que rien n'est importé.
+  await expect(page.locator('#resultats th', {hasText: 'BLAST'})).toHaveCount(0);
+
+  await page.setInputFiles('#fichier-blast', cheminBlast);
+  await expect(page.locator('#resultats th', {hasText: 'BLAST'})).toHaveCount(1);
+  await expect(page.locator('#resultats')).toContainText('2 oligonucléotides reconnus');
+
+  // paire1_F : un seul alignement couvre tout l'oligonucléotide (l'autre fait
+  // douze bases et n'amorce rien) ; paire1_R : cherchée, aucun site ; la sonde
+  // n'était pas dans le fichier, d'où le point.
+  const premiere = page.locator('#resultats tbody tr').first();
+  await expect(premiere.locator('td').nth(10)).toHaveText(/F 1/);
+  await expect(premiere.locator('td').nth(10)).toHaveText(/R 0/);
+  await expect(premiere.locator('td').nth(10)).toHaveText(/S ·/);
+
+  // Une colonne de plus dans le tableau, et autant d'en-têtes que de cellules.
+  const enTetes = await page.locator('#resultats thead th').count();
+  const cellules = await premiere.locator('td').count();
+  expect(cellules).toBe(enTetes);
+
+  // Relancer une recherche oublie le rapprochement : les numéros de paires
+  // changeraient, et le rapprochement deviendrait faux sans prévenir.
+  await page.click('#btn-amorces');
+  await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
+  await expect(page.locator('#resultats th', {hasText: 'BLAST'})).toHaveCount(0);
+});
+
+test('un fichier BLAST sans nos noms le dit, au lieu de laisser croire à zéro site', async ({page}) => {
+  const anonyme = join(dossier, 'anonyme.csv');
+  writeFileSync(anonyme, 'Query_276890,NG_012246.1,100.000,25,0,0,1,25,1,25,1e-06,50.1\n');
+  await page.evaluate(() => {
+    let x = 53;
+    let s = '';
+    for (let i = 0; i < 1500; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
+    return window.seqops!.accepter([new File([`>cible\n${s}\n`], 'cible.fas', {type: 'text/plain'})]);
+  });
+  await page.fill('#amp-min', '150');
+  await page.fill('#amp-max', '400');
+  await page.click('#btn-amorces');
+  await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
+  await page.setInputFiles('#fichier-blast', anonyme);
+  await expect(page.locator('#resultats .err')).toContainText('Aucun nom d’oligonucléotide reconnu');
+  await expect(page.locator('#resultats th', {hasText: 'BLAST'})).toHaveCount(0);
+});
+
 test('la spécificité est vérifiée sur les autres fichiers ouverts', async ({page}) => {
   // Deux fois la même séquence : chaque amorce s'hybride forcément deux fois.
   // C'est le cas du paralogue, et aucune paire ne doit passer.

@@ -205,6 +205,12 @@ legend .case{font:inherit;letter-spacing:inherit;text-transform:inherit;color:in
 #resultats th,#analyse-res th{font-size:.66rem}
 #resultats tbody tr:hover{background:var(--surface2)}
 #resultats input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;cursor:pointer}
+/* Le nom de l'oligonucléotide, celui-là même qui part dans le FASTA et qui
+   revient dans le fichier de résultats du NCBI : discret, mais présent partout
+   pour que le rapprochement se fasse à l'œil sans risque d'erreur de ligne. */
+.nom-oligo{display:block;font:.66rem var(--mono);color:var(--accent);
+           letter-spacing:.06em;margin-bottom:.15rem}
+
 /* Ce qu'on lit sur le brin direct, sous ce qu'on commande : même famille, mais
    visiblement secondaire, pour qu'on ne commande pas l'un pour l'autre. */
 .complement{color:var(--text-dim);font-style:italic}

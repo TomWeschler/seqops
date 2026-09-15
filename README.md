@@ -15,7 +15,11 @@ Une seule exception, et elle est dans les mains de l'opérateur : le bouton
 « Vérifier sur NCBI » ouvre le formulaire blastn dans un autre onglet avec les
 oligonucléotides sélectionnés. L'application ne joint jamais le NCBI elle-même
 — elle prépare le FASTA, le clic ouvre l'onglet — et ce qui part, ce sont des
-oligonucléotides de vingt bases, pas la séquence de l'échantillon.
+oligonucléotides de vingt bases, pas la séquence de l'échantillon. Le fichier
+de résultats qui en revient (« Hit table » ou JSON) se réimporte dans l'outil :
+il est relu dans le navigateur et rapproché des paires par le nom des requêtes,
+que l'outil a lui-même écrit. Amorces, sonde, classeur Excel et FASTA portent
+partout le même nom — `paire3_F`, `paire3_R`, `paire3_sonde`.
 
 ## Ce que ça fait aujourd'hui
 

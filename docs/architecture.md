@@ -147,6 +147,24 @@ spécifique » alors que la recherche n'a tout simplement pas eu lieu. C'est le
 contresens le plus coûteux que cette fonction puisse produire, d'où l'avis
 affiché sous le bouton.
 
+Le chemin de retour est symétrique : le fichier exporté par le NCBI (« Hit
+table », en texte ou en CSV, ou « Single-file JSON ») se relit dans l'outil
+(`src/core/blast.ts`) et se rapproche des paires **par le nom des requêtes**.
+C'est pourquoi ce nom est écrit une seule fois, dans `src/core/nomenclature.ts`,
+et repris tel quel par le tableau, le classeur Excel et le FASTA : un nom qui
+diffère d'un endroit à l'autre oblige à rapprocher les lignes à l'œil, et à
+l'œil on se trompe de ligne. Le nom ne porte pas celui du fichier, qui part sur
+un site tiers et contient souvent un numéro d'échantillon.
+
+Deux précautions dans ce rapprochement. Une ligne dont le nom ne se retrouve
+nulle part n'est rattachée à rien et comptée à part : le CSV du NCBI ne porte
+parfois que ses propres identifiants (`Query_276888`), et il vaut mieux le dire
+que rattacher au hasard. Et un oligonucléotide absent du fichier s'affiche
+« · », jamais « 0 » : n'avoir pas été cherché n'est pas la même chose que
+n'avoir aucun site — c'est exactement la confusion que produit la page du NCBI.
+Seuls comptent les sites qui couvrent tout l'oligonucléotide : un alignement sur
+douze bases n'amorce rien.
+
 ## Les moteurs open source, et ce qu'on en fera
 
 Aucun n'est utilisable tel quel dans un navigateur : ce sont des programmes R,
