@@ -525,7 +525,14 @@ test('les amorces s’exportent en classeur, tout ou ligne à ligne', async ({pa
   const octetsPdf = readFileSync(cheminPdf);
   expect(octetsPdf.subarray(0, 8).toString()).toBe('%PDF-1.4');
   expect(octetsPdf.toString('latin1')).toContain('%%EOF');
-  expect(octetsPdf.toString('latin1')).toContain('paire1_F');
+  const textePdf = octetsPdf.toString('latin1');
+  // Les trois oligonucléotides y sont, et l'amorce Reverse est suivie de son
+  // complément : c'est celle du dessus qu'on commande, et les confondre fait
+  // commander l'oligonucléotide à l'envers.
+  expect(textePdf).toContain('paire1_F');
+  expect(textePdf).toContain('paire1_R');
+  // Les parenthèses sont échappées dans un PDF : on cherche ce qui ne l'est pas.
+  expect(textePdf).toContain('sur le brin +');
 
   // Le FASTA : ce qu'on dépose chez le fournisseur, et ce qu'on redonne à BLAST.
   const versFas = page.waitForEvent('download');

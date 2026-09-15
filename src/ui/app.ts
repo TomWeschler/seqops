@@ -1053,10 +1053,24 @@ function lignesPdf(r: ResultatAmorces, choisies: readonly number[]): LignePdf[] 
     {style: 'saut'}
   ];
 
-  const ligneOligo = (nom: string, seq: string, position: string, tm: number, gc: number) =>
-    ({texte: `${nom.padEnd(14)} ${seq.padEnd(34)} ${position.padEnd(14)} ` +
+  /** Une ligne par oligonucléotide, puis — pour ce qui se lit sur le brin
+   *  inverse — son complément. C'est la ligne « reverse complément pour info »
+   *  du classeur : on commande celle du dessus, on retrouve celle du dessous
+   *  dans la séquence de référence, et les confondre fait commander l'oligo à
+   *  l'envers. */
+  const ligneOligo = (nom: string, seq: string, position: string, tm: number, gc: number,
+                      brinInverse: boolean): LignePdf[] => {
+    const lignes: LignePdf[] = [{
+      texte: `${nom.padEnd(14)} ${seq.padEnd(34)} ${position.padEnd(14)} ` +
              `Tm ${nb(tm, 1).padStart(5)} °C   GC ${nb(gc, 0).padStart(3)} %`,
-      style: 'fixe' as const});
+      style: 'fixe'
+    }];
+    if (brinInverse) {
+      lignes.push({texte: `${''.padEnd(14)} ${complementInverse(seq).padEnd(34)} ` +
+                          'sur le brin + (pour info)', style: 'fixe'});
+    }
+    return lignes;
+  };
 
   for (const i of choisies) {
     const p = r.paires[i];
@@ -1064,13 +1078,16 @@ function lignesPdf(r: ResultatAmorces, choisies: readonly number[]): LignePdf[] 
     const rang = i + 1;
     lignes.push({texte: `Paire ${rang} — amplicon ${nb(p.amplicon)} nt — ` +
                         `ΔTm ${nb(p.deltaTm, 1)} °C — score ${nb(p.score, 2)}`, style: 'soustitre'});
-    lignes.push(ligneOligo(nomOligo(rang, 'F'), p.avant.seq,
-                           `${nb(p.avant.debut)}..${nb(p.avant.fin)}`, p.avant.tm, p.avant.gc));
-    lignes.push(ligneOligo(nomOligo(rang, 'R'), p.arriere.seq,
-                           `${nb(p.arriere.debut)}..${nb(p.arriere.fin)}`, p.arriere.tm, p.arriere.gc));
+    lignes.push(...ligneOligo(nomOligo(rang, 'F'), p.avant.seq,
+                              `${nb(p.avant.debut)}..${nb(p.avant.fin)}`,
+                              p.avant.tm, p.avant.gc, false));
+    lignes.push(...ligneOligo(nomOligo(rang, 'R'), p.arriere.seq,
+                              `${nb(p.arriere.debut)}..${nb(p.arriere.fin)}`,
+                              p.arriere.tm, p.arriere.gc, true));
     if (p.sonde) {
-      lignes.push(ligneOligo(nomOligo(rang, 'sonde'), p.sonde.seq,
-                             `${nb(p.sonde.debut)}..${nb(p.sonde.fin)}`, p.sonde.tm, p.sonde.gc));
+      lignes.push(...ligneOligo(nomOligo(rang, 'sonde'), p.sonde.seq,
+                                `${nb(p.sonde.debut)}..${nb(p.sonde.fin)}`,
+                                p.sonde.tm, p.sonde.gc, p.sonde.brin === '\u2212'));
       lignes.push({texte: `Sonde P 5'-3' sur le brin ${p.sonde.brin}, ` +
         `collée à ${p.sonde.collee}` +
         `${Math.min(p.sonde.distanceAvant, p.sonde.distanceArriere) === 0
