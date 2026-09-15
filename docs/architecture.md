@@ -137,8 +137,15 @@ elle y tient (au-delà de 2 000 caractères, une adresse risquerait d'être
 tronquée, donc de produire une requête fausse : on ouvre alors le formulaire nu
 et l'opérateur colle). Aucun réglage du NCBI n'est forcé : la base, le programme
 et le reste restent ceux que l'opérateur connaît. Pour un oligonucléotide de
-vingt bases, il faudra penser à choisir là-bas la tâche « blastn-short » —
-megablast, par défaut, ne trouve rien d'aussi court.
+vingt bases, il faut penser à choisir là-bas « Somewhat similar sequences
+(blastn) » et un *word size* de 7, et à limiter l'organisme. Ce n'est pas un
+détail de confort : en megablast, le réglage par défaut, le mot d'amorçage fait
+28 bases, et une requête plus courte ne peut pas être amorcée du tout. Le NCBI
+répond alors « no significant similarity found » et marque la requête d'une
+étoile dans la liste déroulante — ce qui se lit comme « cette amorce est
+spécifique » alors que la recherche n'a tout simplement pas eu lieu. C'est le
+contresens le plus coûteux que cette fonction puisse produire, d'où l'avis
+affiché sous le bouton.
 
 ## Les moteurs open source, et ce qu'on en fera
 

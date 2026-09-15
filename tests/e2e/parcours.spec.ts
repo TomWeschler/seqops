@@ -560,6 +560,10 @@ test('le bouton NCBI prépare le FASTA et n’ouvre l’onglet que sur clic', as
   expect(requete).toContain('>paire1_F');
   // Le FASTA reste lisible dans la page, pour qui doit le coller à la main.
   await expect(page.locator('#blast-texte')).toContainText('>paire1_F');
+  // Et le piège du réglage par défaut est écrit : en megablast, un oligo de
+  // vingt bases ne ressort pas, et le NCBI ne dit pas pourquoi.
+  await expect(page.locator('#conseil-blast')).toContainText('Word size');
+  await expect(page.locator('#conseil-blast')).toContainText('28 bases');
   // Et la page elle-même n'a toujours joint personne.
   expect(sortants).toEqual([]);
 });

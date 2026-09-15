@@ -556,6 +556,11 @@ function rendreAmorces(r: ResultatAmorces): void {
     <p class="note" id="note-blast">Le bouton NCBI ouvre blastn dans un autre onglet
       avec les oligonucléotides sélectionnés : c'est la seule action de l'outil qui
       sorte du poste, et elle n'a lieu que si vous cliquez.</p>
+    <p class="note" id="conseil-blast"><b>Sur la page du NCBI</b> : choisissez
+      « Somewhat similar sequences (blastn) », réglez <i>Word size</i> sur 7 et limitez
+      l'organisme (<i>Homo sapiens</i>). En megablast — le réglage par défaut — le mot
+      d'amorçage fait 28 bases : tout oligonucléotide plus court ressort
+      « no significant similarity found », sans autre avertissement.</p>
     <div id="blast-fasta" hidden></div>
     <div class="tbl"><table><thead><tr>
     <th><input type="checkbox" id="tout-cocher" title="Tout sélectionner" checked></th>
