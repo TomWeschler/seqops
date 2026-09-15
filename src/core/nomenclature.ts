@@ -11,12 +11,6 @@
 
 export type RoleOligo = 'F' | 'R' | 'sonde';
 
-export const ROLE_LISIBLE: Record<RoleOligo, string> = {
-  F: 'Amorce Forward',
-  R: 'Amorce Reverse',
-  sonde: 'Sonde'
-};
-
 /** `paire3_F` : le rang de la paire tel qu'il est affiché (1 pour la première),
  *  puis le rôle. */
 export function nomOligo(rangPaire: number, role: RoleOligo): string {

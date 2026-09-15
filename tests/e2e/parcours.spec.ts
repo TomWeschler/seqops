@@ -507,13 +507,36 @@ test('les amorces s’exportent en classeur, tout ou ligne à ligne', async ({pa
   const telechargement = page.waitForEvent('download');
   await page.click('#btn-xlsx');
   const fichier = await telechargement;
-  expect(fichier.suggestedFilename()).toMatch(/_amorces\.xlsx$/);
+  expect(fichier.suggestedFilename()).toMatch(/_design\.xlsx$/);
   const chemin = join(dossier, 'export.xlsx');
   await fichier.saveAs(chemin);
   // Un vrai ZIP, pas un fichier vide déguisé : la signature PK, et la taille.
   const octets = readFileSync(chemin);
   expect(octets.length).toBeGreaterThan(1000);
   expect(octets.subarray(0, 2).toString()).toBe('PK');
+
+  // Le PDF : la signature du format, et la fin de fichier qu'un lecteur cherche.
+  const versPdf = page.waitForEvent('download');
+  await page.click('#btn-pdf');
+  const pdf = await versPdf;
+  expect(pdf.suggestedFilename()).toMatch(/_amorces\.pdf$/);
+  const cheminPdf = join(dossier, 'export.pdf');
+  await pdf.saveAs(cheminPdf);
+  const octetsPdf = readFileSync(cheminPdf);
+  expect(octetsPdf.subarray(0, 8).toString()).toBe('%PDF-1.4');
+  expect(octetsPdf.toString('latin1')).toContain('%%EOF');
+  expect(octetsPdf.toString('latin1')).toContain('paire1_F');
+
+  // Le FASTA : ce qu'on dépose chez le fournisseur, et ce qu'on redonne à BLAST.
+  const versFas = page.waitForEvent('download');
+  await page.click('#btn-fas');
+  const fas = await versFas;
+  expect(fas.suggestedFilename()).toMatch(/_amorces\.fas$/);
+  const cheminFas = join(dossier, 'export.fas');
+  await fas.saveAs(cheminFas);
+  const texte = readFileSync(cheminFas, 'utf-8');
+  expect(texte.startsWith('>paire1_F ')).toBe(true);
+  expect(texte).toMatch(/^[ACGT]+$/m);
 });
 
 test('le bouton NCBI prépare le FASTA et n’ouvre l’onglet que sur clic', async ({page}) => {

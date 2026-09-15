@@ -65,7 +65,7 @@ describe('classeur .xlsx', () => {
     const {liste} = relire(octets, 'simple.xlsx');
     expect(liste).toEqual([
       '[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml',
-      'xl/_rels/workbook.xml.rels', 'xl/worksheets/sheet1.xml'
+      'xl/_rels/workbook.xml.rels', 'xl/styles.xml', 'xl/worksheets/sheet1.xml'
     ]);
   });
 
@@ -100,6 +100,22 @@ describe('classeur .xlsx', () => {
     expect(feuille).toContain('r="C1"');
   });
 
+  it.skipIf(!openpyxlDispo)('écrit un vrai pourcentage, que le tableur sait calculer', () => {
+    const chemin = join(dossier, 'pourcent.xlsx');
+    writeFileSync(chemin, classeurXlsx('F', [['GC', {pourcent: 0.55}]]));
+    const script = [
+      'import openpyxl, json, sys',
+      'f = openpyxl.load_workbook(sys.argv[1]).active',
+      'c = f.cell(row=1, column=2)',
+      'print(json.dumps({"valeur": c.value, "format": c.number_format}))'
+    ].join('\n');
+    const lu = JSON.parse(execFileSync('python3', ['-c', script, chemin], {encoding: 'utf-8'})) as
+      {valeur: number; format: string};
+    // La valeur reste une fraction — c'est le format qui affiche « 55 % ».
+    expect(lu.valeur).toBeCloseTo(0.55, 6);
+    expect(lu.format).toBe('0%');
+  });
+
   it('nomme les colonnes au-delà de Z', () => {
     expect(colonne(0)).toBe('A');
     expect(colonne(25)).toBe('Z');
@@ -115,7 +131,7 @@ describe('classeur .xlsx', () => {
   });
 
   it('supporte un classeur vide et un grand classeur', () => {
-    expect(relire(classeurXlsx('F', []), 'vide.xlsx').liste).toHaveLength(5);
+    expect(relire(classeurXlsx('F', []), 'vide.xlsx').liste).toHaveLength(6);
     const grand = Array.from({length: 500}, (_, i) => [`amorce ${i}`, i, 'ACGTACGTACGTACGTACGT']);
     const {feuille} = relire(classeurXlsx('F', grand), 'grand.xlsx');
     expect(feuille).toContain('r="500"');

@@ -165,6 +165,34 @@ n'avoir aucun site — c'est exactement la confusion que produit la page du NCBI
 Seuls comptent les sites qui couvrent tout l'oligonucléotide : un alignement sur
 douze bases n'amorce rien.
 
+## Les trois exports d'un design
+
+La feuille `.xlsx` n'est pas un tableau inventé par l'outil : c'est celle que le
+laboratoire remplit déjà (`tests/fixtures/template_designs_FRP.xlsx`). Les
+en-têtes sont recopiés mot pour mot — fautes de frappe comprises — et une
+épreuve les compare au vrai fichier, pour qu'une reformulation d'un côté ne
+passe pas inaperçue de l'autre. Trois lignes par paire, F puis R puis la sonde,
+aux colonnes du template.
+
+Ce qui demande un jugement humain reste **vide** : le virus (colonne B) et le
+nom d'amorce (colonne D), laissés vides à la demande ; le gène (T) et le
+commentaire (U), que l'outil n'a aucun moyen de connaître. Les trois colonnes
+BLAST ne se remplissent que si un fichier de résultats a été importé. Une case
+vide se corrige à la main ; une case remplie au jugé se recopie, et c'est elle
+qu'on retrouve six mois plus tard dans un dossier de validation. Deux limites du
+générateur, assumées : il n'écrit pas de cellules fusionnées (la taille de
+l'amplicon est portée sur la ligne Forward, et non fusionnée sur les trois), et
+il n'applique ni couleur ni retour à la ligne automatique.
+
+Le PDF (`src/core/pdf.ts`) est écrit à la main comme le `.xlsx`, et pour la même
+raison : aucune bibliothèque tierce n'est chargeable sous cette politique de
+sécurité. Texte seul, polices de base du lecteur (Helvetica, Courier), donc
+encodage WinAnsi — ce qu'il ne couvre pas (primes, Δ) est remplacé par un
+équivalent lisible plutôt que perdu. Faute de bibliothèque PDF installée ici, la
+vérification se fait par un analyseur écrit à part qui relit la structure du
+fichier : table des décalages, longueurs de flux, texte. C'est ce qu'un lecteur
+vérifie avant d'afficher quoi que ce soit.
+
 ## Les moteurs open source, et ce qu'on en fera
 
 Aucun n'est utilisable tel quel dans un navigateur : ce sont des programmes R,

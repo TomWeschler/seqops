@@ -15,10 +15,13 @@ import {rapportHtml, rapportTexte} from '../core/rapport.js';
 import {classeurXlsx} from '../core/xlsx.js';
 import {lienBlastn, oligosEnFasta} from '../core/ncbi.js';
 import {lireResultatsBlast, sitesComplets} from '../core/blast.js';
+import {documentPdf} from '../core/pdf.js';
+import type {LignePdf} from '../core/pdf.js';
+import {TITRE_FEUILLE, feuilleDesign} from '../calculs/feuilleDesign.js';
+import type {VerdictBlast} from '../calculs/feuilleDesign.js';
 import type {RapportBlast} from '../core/blast.js';
 import {nomOligo} from '../core/nomenclature.js';
 import type {RoleOligo} from '../core/nomenclature.js';
-import type {Cellule} from '../core/xlsx.js';
 import type {PaireAmorces, ResultatAmorces, Sonde, TermeScore} from '../calculs/amorces.js';
 import type {ResultatAnalyse} from '../calculs/analyse.js';
 import {ExecuteurLocal} from '../jobs/executeur-local.js';
@@ -594,6 +597,8 @@ function rendreAmorces(r: ResultatAmorces): void {
       avecSonde ? ` ; ${nb(r.candidatsSonde)} sondes candidates recensées, ${nb(r.sansSonde)} paires écartées faute de sonde` : ''}.</p>
     <div class="barre" style="margin-bottom:.4rem">
       <button id="btn-xlsx" class="primary">Exporter la sélection (.xlsx)</button>
+      <button id="btn-pdf">Exporter PDF</button>
+      <button id="btn-fas">Exporter FAS</button>
       <button id="btn-blast">Vérifier sur NCBI (blastn) ↗</button>
       <button id="btn-import-blast">Importer les résultats BLAST…</button>
       <input type="file" id="fichier-blast" accept=".csv,.txt,.tsv,.json,.out" hidden>
@@ -611,7 +616,7 @@ function rendreAmorces(r: ResultatAmorces): void {
     <div class="tbl"><table><thead><tr>
     <th><input type="checkbox" id="tout-cocher" title="Tout sélectionner" checked></th>
     <th>#</th><th>Amorce Forward 5′-3′</th><th>Amorce Reverse 5′-3′</th>
-    ${avecSonde ? '<th>Sonde</th>' : ''}
+    ${avecSonde ? '<th>Sonde P 5\u2032-3\u2032</th>' : ''}
     <th>Amplicon</th><th>Tm F/R</th><th>ΔTm</th><th title="Énergie libre des structures, en kcal/mol : dimère des deux amorces, puis la pire épingle à cheveux. Plus c’est négatif, plus la structure tient.">ΔG dim./épin.</th>
     <th title="Sites d’hybridation de chaque amorce sur toutes les séquences ouvertes. 1 / 1, c’est ce qu’on veut.">Sites</th>
     ${blast ? '<th title="Sites trouvés par BLAST couvrant tout l’oligonucléotide. Un point : cet oligonucléotide n’était pas dans le fichier importé.">BLAST</th>' : ''}
@@ -744,6 +749,8 @@ function brancherSelection(r: ResultatAmorces): void {
       : 'Aucune paire sélectionnée.';
     ($('#btn-xlsx') as HTMLButtonElement).disabled = n === 0;
     ($('#btn-blast') as HTMLButtonElement).disabled = n === 0;
+    ($('#btn-pdf') as HTMLButtonElement).disabled = n === 0;
+    ($('#btn-fas') as HTMLButtonElement).disabled = n === 0;
     const tout = $('#tout-cocher') as HTMLInputElement;
     tout.checked = n === cases().length && n > 0;
     tout.indeterminate = n > 0 && n < cases().length;
@@ -807,14 +814,32 @@ function brancherSelection(r: ResultatAmorces): void {
     (e.target as HTMLInputElement).value = '';
   });
 
+  const racine = () => (docActif()?.nom ?? 'amorces').replace(/\.[^.]+$/, '');
+
   $('#btn-xlsx').addEventListener('click', () => {
-    const doc = docActif();
     const liste = choisies();
-    if (!doc || !liste.length) return;
-    const octets = classeurXlsx('Amorces', classeurAmorces(doc, r, liste));
-    telecharger(nomSur(doc.nom.replace(/\.[^.]+$/, ''), '_amorces.xlsx'),
+    if (!liste.length) return;
+    const octets = classeurXlsx(TITRE_FEUILLE, feuilleDesign(r.paires, liste, {
+      blast: (rang, role) => verdictBlast(r, rang, role)
+    }));
+    telecharger(nomSur(racine(), '_design.xlsx'),
                 new Blob([octets as BlobPart],
                          {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  });
+
+  $('#btn-pdf').addEventListener('click', () => {
+    const liste = choisies();
+    if (!liste.length) return;
+    const titre = `Amorces — ${docActif()?.nom ?? ''}`.trim();
+    telecharger(nomSur(racine(), '_amorces.pdf'),
+                new Blob([documentPdf(titre, lignesPdf(r, liste)) as BlobPart],
+                         {type: 'application/pdf'}));
+  });
+
+  $('#btn-fas').addEventListener('click', () => {
+    const liste = choisies();
+    if (!liste.length) return;
+    telecharger(nomSur(racine(), '_amorces.fas'), oligosEnFasta(r.paires, liste));
   });
   majBilan();
 }
@@ -989,54 +1014,86 @@ const IUPAC_LISIBLE = (lettre: string): string => {
   return cls && cls.length > 1 ? `<span class="note">(${cls.split('').join(' ou ')})</span>` : '';
 };
 
-/** Le classeur des oligonucléotides sélectionnés : une ligne par
- *  oligonucléotide — F, R, et la sonde quand il y en a une — parce que c'est
- *  ainsi qu'on les commande, et non une ligne par paire. */
-function classeurAmorces(doc: DocumentSeq, r: ResultatAmorces, choisies: readonly number[]): Cellule[][] {
-  const lignes: Cellule[][] = [[
-    'Nom', 'Paire', 'Rôle', 'Séquence 5\u2032→3\u2032 (à commander)', 'Brin',
-    'Sur le brin + (5\u2032→3\u2032)', 'Début', 'Fin', 'Longueur',
-    'Tm (°C)', 'GC (%)', 'ΔG épingle', 'Amplicon (nt)', 'Sites',
-    'BLAST : sites complets', 'BLAST : alignements', 'BLAST : sujets', 'Fichier'
-  ]];
-  const arrondi = (v: number, d = 1) => Math.round(v * 10 ** d) / 10 ** d;
-
-  /** Les trois colonnes BLAST d'un oligonucléotide. Vides tant qu'aucun
-   *  fichier n'a été importé — une case vide se lit « pas vérifié », un zéro
-   *  se lirait « vérifié, rien trouvé », et ce n'est pas la même chose. */
-  const colonnesBlast = (rang: number, role: RoleOligo, oligo: string): Cellule[] => {
-    const bilan = blast?.parOligo.get(nomOligo(rang, role));
-    if (!bilan) return [null, null, null];
-    const complets = sitesComplets(bilan, oligo.length);
-    return [complets.length, bilan.sites.length,
-            complets.slice(0, 5).map((x) => x.sujet).join(' ; ') || null];
+/** Ce qu'un fichier BLAST importé dit d'un oligonucléotide, mis en forme pour
+ *  la feuille de design. On ne retient que les sites qui couvrent tout
+ *  l'oligonucléotide : un alignement partiel n'amorce rien, et le faire figurer
+ *  dans une colonne « ident (%) » reviendrait à décorer un faux positif. */
+function verdictBlast(
+  r: ResultatAmorces, rang: number, role: RoleOligo
+): VerdictBlast | null {
+  if (!blast) return null;
+  const p = r.paires[rang - 1];
+  if (!p) return null;
+  const oligo = role === 'F' ? p.avant.seq : role === 'R' ? p.arriere.seq : p.sonde?.seq;
+  if (!oligo) return null;
+  const bilan = blast.parOligo.get(nomOligo(rang, role));
+  if (!bilan) return null;                       // pas dans le fichier : rien à dire
+  const complets = sitesComplets(bilan, oligo.length);
+  if (!complets.length) return {mention: 'aucun site complet'};
+  const meilleur = complets.reduce((a, b) => (b.evalue < a.evalue ? b : a));
+  const autres = complets.filter((x) => x !== meilleur).map((x) => x.organisme ?? x.sujet);
+  return {
+    couverture: Math.min(1, meilleur.longueur / oligo.length),
+    evalue: meilleur.evalue,
+    identite: meilleur.identite,
+    autresSujets: [...new Set(autres)]
   };
+}
+
+/** Le PDF : la même sélection, mise en page pour être imprimée et signée. Ce
+ *  n'est pas un tableau — une feuille A4 ne tient pas douze colonnes — mais un
+ *  bloc par paire, dans l'ordre du tableau. */
+function lignesPdf(r: ResultatAmorces, choisies: readonly number[]): LignePdf[] {
+  const doc = docActif();
+  const lignes: LignePdf[] = [
+    {texte: `Amorces — ${doc?.nom ?? 'sans fichier'}`, style: 'titre'},
+    {texte: `${nb(choisies.length)} paire(s) retenues sur ${nb(r.paires.length)} — ` +
+            `spécificité vérifiée sur ${r.verifieeSur.join(', ')} — ` +
+            `édité le ${new Date().toLocaleDateString('fr-FR')}`, style: 'note'},
+    {style: 'saut'}
+  ];
+
+  const ligneOligo = (nom: string, seq: string, position: string, tm: number, gc: number) =>
+    ({texte: `${nom.padEnd(14)} ${seq.padEnd(34)} ${position.padEnd(14)} ` +
+             `Tm ${nb(tm, 1).padStart(5)} °C   GC ${nb(gc, 0).padStart(3)} %`,
+      style: 'fixe' as const});
 
   for (const i of choisies) {
     const p = r.paires[i];
     if (!p) continue;
-    const n = i + 1;
-    lignes.push([nomOligo(n, 'F'), n, 'Amorce Forward', p.avant.seq, '+', p.avant.seq,
-                 p.avant.debut, p.avant.fin, p.avant.seq.length,
-                 arrondi(p.avant.tm), arrondi(p.avant.gc), arrondi(p.avant.dgEpingle),
-                 p.amplicon, p.sitesAvant,
-                 ...colonnesBlast(n, 'F', p.avant.seq), doc.nom]);
-    lignes.push([nomOligo(n, 'R'), n, 'Amorce Reverse', p.arriere.seq, '−',
-                 complementInverse(p.arriere.seq),
-                 p.arriere.debut, p.arriere.fin, p.arriere.seq.length,
-                 arrondi(p.arriere.tm), arrondi(p.arriere.gc), arrondi(p.arriere.dgEpingle),
-                 p.amplicon, p.sitesArriere,
-                 ...colonnesBlast(n, 'R', p.arriere.seq), doc.nom]);
+    const rang = i + 1;
+    lignes.push({texte: `Paire ${rang} — amplicon ${nb(p.amplicon)} nt — ` +
+                        `ΔTm ${nb(p.deltaTm, 1)} °C — score ${nb(p.score, 2)}`, style: 'soustitre'});
+    lignes.push(ligneOligo(nomOligo(rang, 'F'), p.avant.seq,
+                           `${nb(p.avant.debut)}..${nb(p.avant.fin)}`, p.avant.tm, p.avant.gc));
+    lignes.push(ligneOligo(nomOligo(rang, 'R'), p.arriere.seq,
+                           `${nb(p.arriere.debut)}..${nb(p.arriere.fin)}`, p.arriere.tm, p.arriere.gc));
     if (p.sonde) {
-      lignes.push([nomOligo(n, 'sonde'), n, `Sonde (collée à ${p.sonde.collee})`,
-                   p.sonde.seq, p.sonde.brin,
-                   p.sonde.brin === '+' ? p.sonde.seq : complementInverse(p.sonde.seq),
-                   p.sonde.debut, p.sonde.fin, p.sonde.seq.length,
-                   arrondi(p.sonde.tm), arrondi(p.sonde.gc), null,
-                   p.amplicon, null,
-                   ...colonnesBlast(n, 'sonde', p.sonde.seq), doc.nom]);
+      lignes.push(ligneOligo(nomOligo(rang, 'sonde'), p.sonde.seq,
+                             `${nb(p.sonde.debut)}..${nb(p.sonde.fin)}`, p.sonde.tm, p.sonde.gc));
+      lignes.push({texte: `Sonde P 5'-3' sur le brin ${p.sonde.brin}, ` +
+        `collée à ${p.sonde.collee}` +
+        `${Math.min(p.sonde.distanceAvant, p.sonde.distanceArriere) === 0
+            ? ''
+            : ` à ${nb(Math.min(p.sonde.distanceAvant, p.sonde.distanceArriere))} nt`}` +
+        ` ; l'amorce Reverse se commande telle qu'écrite (brin −).`, style: 'note'});
     }
+    if (blast) {
+      const dit = (role: RoleOligo) => {
+        const v = verdictBlast(r, rang, role);
+        if (!v) return `${role} : non cherché`;
+        if (v.mention) return `${role} : ${v.mention}`;
+        return `${role} : ${nb((v.identite ?? 0), 1)} % d'identité, e-value ${v.evalue}` +
+               `${v.autresSujets?.length ? `, aussi sur ${v.autresSujets.slice(0, 3).join(', ')}` : ''}`;
+      };
+      lignes.push({texte: `BLAST — ${(['F', 'R', 'sonde'] as const).map(dit).join(' | ')}`,
+                   style: 'note'});
+    }
+    lignes.push({style: 'saut'});
   }
+
+  lignes.push({texte: 'Produit par seqops, hors ligne. Les Tm sont calculées par la formule ' +
+    'ajustée au sel (OligoCalc) sauf mention contraire dans les réglages.', style: 'note'});
   return lignes;
 }
 

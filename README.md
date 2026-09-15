@@ -38,6 +38,7 @@ partout le même nom — `paire3_F`, `paire3_R`, `paire3_sonde`.
 | Calculer juste | Tm dans les conditions réelles de la réaction (K⁺, Mg²⁺, dNTP, amorce) et non à 50 mM de sodium ; épingles et dimères évalués en ΔG. |
 | Débusquer les hétérozygotes | Positions à deux pics que l'appel de bases a tranchées sans le dire, cherchées dans la zone exploitable, avec le code IUPAC proposé. |
 | Exporter | Rapport texte (cahier de manip, dépôt git) et rapport HTML autonome (envoi, impression), `.fas` corrigé. |
+| Exporter un design | Les paires retenues au format de la feuille « création nveau design » du laboratoire (`.xlsx`, colonnes et intitulés du template), en PDF imprimable, ou en `.fas` des oligonucléotides. Ce que l'outil ne peut pas savoir — virus, nom d'amorce, gène, commentaire — reste vide plutôt que d'être deviné. |
 
 ## Démarrer
 

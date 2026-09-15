@@ -11,7 +11,17 @@
  *  (méthode « stored ») : le format l'autorise, Excel l'accepte, et cela évite
  *  d'implémenter DEFLATE pour quelques kilo-octets. */
 
-export type Cellule = string | number | null | undefined;
+/** Un pourcentage écrit comme le tableur l'attend : la valeur est une
+ *  fraction (0,55) et la mise en forme y ajoute le signe. Écrire « 55 % » en
+ *  texte se lirait pareil mais ne se trierait ni ne se calculerait plus. */
+export interface Pourcent {
+  readonly pourcent: number;
+}
+
+export type Cellule = string | number | null | undefined | Pourcent;
+
+const estPourcent = (v: unknown): v is Pourcent =>
+  typeof v === 'object' && v !== null && typeof (v as Pourcent).pourcent === 'number';
 
 const REMPLACEMENTS: Record<string, string> = {
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;'
@@ -41,6 +51,10 @@ function feuilleXml(lignes: readonly (readonly Cellule[])[]): string {
     const cellules = ligne.map((valeur, c) => {
       const ref = `${colonne(c)}${l + 1}`;
       if (valeur === null || valeur === undefined || valeur === '') return '';
+      if (estPourcent(valeur) && Number.isFinite(valeur.pourcent)) {
+        // Le style 1 est le seul défini : le format « 0 % ».
+        return `<c r="${ref}" s="1"><v>${valeur.pourcent}</v></c>`;
+      }
       if (typeof valeur === 'number' && Number.isFinite(valeur)) {
         return `<c r="${ref}"><v>${valeur}</v></c>`;
       }
@@ -157,6 +171,7 @@ export function classeurXlsx(nomFeuille: string, lignes: readonly (readonly Cell
     '<Default Extension="xml" ContentType="application/xml"/>' +
     '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
     '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
     '</Types>';
   const rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
@@ -169,13 +184,31 @@ export function classeurXlsx(nomFeuille: string, lignes: readonly (readonly Cell
   const relsClasseur = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
     '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
     '</Relationships>';
+  // Le strict minimum qu'Excel exige d'une feuille de styles, plus le seul
+  // format dont on se serve : le pourcentage. Les index 0 sont obligatoires,
+  // même vides — Excel refuse le fichier s'ils manquent.
+  const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<numFmts count="1"><numFmt numFmtId="164" formatCode="0%"/></numFmts>' +
+    '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>' +
+    '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>' +
+    '<borders count="1"><border/></borders>' +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+    '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+    '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>' +
+    // L'ordre des sections est imposé par le schéma : cellStyles vient après
+    // cellXfs, sinon le tableur déclare le fichier illisible.
+    '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+    '</styleSheet>';
 
   return zip([
     {nom: '[Content_Types].xml', donnees: e.encode(types)},
     {nom: '_rels/.rels', donnees: e.encode(rels)},
     {nom: 'xl/workbook.xml', donnees: e.encode(classeur)},
     {nom: 'xl/_rels/workbook.xml.rels', donnees: e.encode(relsClasseur)},
+    {nom: 'xl/styles.xml', donnees: e.encode(styles)},
     {nom: 'xl/worksheets/sheet1.xml', donnees: e.encode(feuilleXml(lignes))}
   ]);
 }
