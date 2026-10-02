@@ -10,6 +10,7 @@
  *  corrige ; une case remplie au jugé se recopie, et c'est elle qu'on retrouve
  *  six mois plus tard dans un dossier de validation. */
 
+import {nomOligo} from '../core/nomenclature.js';
 import {complementInverse} from '../core/sequence.js';
 import {autoAppariement, plusLongueEpingle} from '../core/thermo.js';
 import type {Cellule} from '../core/xlsx.js';
@@ -181,7 +182,8 @@ export function feuilleDesign(
     ];
 
     lignes.push([
-      null, null, 'Amorce Forward', null,
+      // Colonne D : le même nom que dans le tableau, le PDF, le FASTA et BLAST.
+      null, null, 'Amorce Forward', nomOligo(rang, 'F'),
       ...commun(p.avant.seq, p.avant.debut, p.avant.fin, true, p.avant.tm),
       {pourcent: p.avant.gc / 100},
       ...controlesAmorce(p.avant.seq, o),
@@ -191,7 +193,7 @@ export function feuilleDesign(
     ]);
 
     lignes.push([
-      null, null, 'Amorce Reverse', null,
+      null, null, 'Amorce Reverse', nomOligo(rang, 'R'),
       ...commun(p.arriere.seq, p.arriere.debut, p.arriere.fin, false, p.arriere.tm),
       {pourcent: p.arriere.gc / 100},
       ...controlesAmorce(p.arriere.seq, o),
@@ -204,7 +206,7 @@ export function feuilleDesign(
       const s = p.sonde;
       const distance = s.collee === 'F' ? s.distanceAvant : s.distanceArriere;
       lignes.push([
-        null, null, 'Sonde P 5\'-3\'', null,
+        null, null, 'Sonde P 5\'-3\'', nomOligo(rang, 'sonde'),
         ...commun(s.seq, s.debut, s.fin, s.brin === '+', s.tm),
         // Pour une sonde, le template ne note pas un pourcentage mais le
         // rapport C/G, qui est la règle qui la concerne.

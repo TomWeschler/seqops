@@ -51,11 +51,12 @@ describe('feuille de design, au format du laboratoire', () => {
     expect(lignes[1]?.[2]).toBe('Amorce Forward');
     expect(lignes[2]?.[2]).toBe('Amorce Reverse');
     expect(lignes[3]?.[2]).toBe("Sonde P 5'-3'");
-    // Colonnes B et D laissées vides, comme demandé.
-    for (const ligne of lignes.slice(1)) {
-      expect(ligne[1]).toBeNull();
-      expect(ligne[3]).toBeNull();
-    }
+    // Colonne B (virus) laissée vide ; colonne D porte le nom de l'oligo, le
+    // même que dans le PDF, le FASTA et le fichier BLAST.
+    for (const ligne of lignes.slice(1)) expect(ligne[1]).toBeNull();
+    expect(lignes.slice(1).map((l) => l[3])).toEqual([
+      'paire1_F', 'paire1_R', 'paire1_sonde', 'paire2_F', 'paire2_R', 'paire2_sonde'
+    ]);
   });
 
   it('met la séquence, son complément inverse et la position dans le sens de lecture', () => {

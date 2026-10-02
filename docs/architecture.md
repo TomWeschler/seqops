@@ -174,9 +174,11 @@ en-têtes sont recopiés mot pour mot — fautes de frappe comprises — et une
 passe pas inaperçue de l'autre. Trois lignes par paire, F puis R puis la sonde,
 aux colonnes du template.
 
-Ce qui demande un jugement humain reste **vide** : le virus (colonne B) et le
-nom d'amorce (colonne D), laissés vides à la demande ; le gène (T) et le
-commentaire (U), que l'outil n'a aucun moyen de connaître. Les trois colonnes
+Le nom d'amorce (colonne D) reprend le nom partagé — `paire1_F`, `paire1_R`,
+`paire1_sonde` —, le même que dans le tableau, le PDF, le FASTA et le fichier
+BLAST. Ce qui demande un jugement humain reste **vide** : le virus (colonne B),
+laissé vide à la demande ; le gène (T) et le commentaire (U), que l'outil n'a
+aucun moyen de connaître. Les trois colonnes
 BLAST ne se remplissent que si un fichier de résultats a été importé. Une case
 vide se corrige à la main ; une case remplie au jugé se recopie, et c'est elle
 qu'on retrouve six mois plus tard dans un dossier de validation. Deux limites du
