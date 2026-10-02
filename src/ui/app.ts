@@ -16,6 +16,10 @@ import {classeurXlsx} from '../core/xlsx.js';
 import {lienBlastn, oligosEnFasta} from '../core/ncbi.js';
 import {lireResultatsBlast, sitesComplets} from '../core/blast.js';
 import {documentPdf} from '../core/pdf.js';
+import {pisteAlignee, regle} from '../core/alignement.js';
+import {appariementCroise} from '../core/thermo.js';
+import type {AppariementCroise} from '../core/thermo.js';
+import type {OligoPlace} from '../core/alignement.js';
 import type {LignePdf} from '../core/pdf.js';
 import {TITRE_FEUILLE, feuilleDesign} from '../calculs/feuilleDesign.js';
 import type {VerdictBlast} from '../calculs/feuilleDesign.js';
@@ -60,7 +64,10 @@ interface Etat {
   docs: DocumentSeq[];
   actif: number;
   vue: {premiere: number; combien: number};
-  amorces?: {tache: string; resultat?: ResultatAmorces};
+  /** La recherche d'amorces en cours ou terminée, et la séquence sur laquelle
+   *  elle a tourné : les positions des oligos se rapportent à CELLE-LÀ, pas à
+   *  la séquence du moment si on l'a corrigée depuis. */
+  amorces?: {tache: string; resultat?: ResultatAmorces; seq?: string};
   analyse?: {tache: string; resultat?: ResultatAnalyse};
 }
 
@@ -642,11 +649,87 @@ function rendreAmorces(r: ResultatAmorces): void {
           : ''}</td>
       ${celluleBlast(p, i + 1)}
       <td class="mono score" data-detail="${i}" tabindex="0"
-          aria-label="Score ${nb(p.score, 2)}, détail au survol">${nb(p.score, 2)}</td></tr>`).join('') +
+          aria-label="Score ${nb(p.score, 2)}, détail au survol">${nb(p.score, 2)}${
+        // Sous le score, seulement ce qui s'apparie : une case pleine de zéros
+        // noierait les rares paires où il y a quelque chose à voir.
+        appariementsDePaire(p).filter(({a}) => a.nt > 0)
+          .map(({court, a}) => `<br><span class="note appariement">${court} ${nb(a.nt)} nt · ${nb(a.pourcent, 0)} %</span>`)
+          .join('')}</td></tr>`).join('') +
     '</tbody></table></div>';
 
+  // brancherSelection dessine aussi l'alignement : il suit la sélection.
   brancherSelection(r);
   brancherInfobulle(r);
+}
+
+/** Les paires cochées, posées sur la séquence de la recherche. La sélection
+ *  est celle du tableau — la même que pour les exports : cocher une paire
+ *  l'ajoute ici, la décocher l'en retire. */
+function rendreAlignement(): void {
+  const section = $('#p-alignement');
+  const boite = $('#alignement');
+  const r = etat.amorces?.resultat;
+  const reference = etat.amorces?.seq;
+  if (!r || !reference || !r.paires.length) { section.hidden = true; return; }
+  section.hidden = false;
+
+  const cochees = Array.from(document.querySelectorAll<HTMLInputElement>('#resultats .choix'))
+    .filter((c) => c.checked).map((c) => Number(c.dataset.paire));
+
+  const doc = docActif();
+  const modifiee = doc !== null && sequenceCourante(doc) !== reference;
+  const lignePiste = (etiquette: string, contenu: string, classe = '') =>
+    `<div class="ligne ${classe}"><span class="etiquette">${etiquette}</span>` +
+    `<span class="piste">${contenu}</span></div>`;
+
+  const lignes = [
+    lignePiste('', ech(regle(reference.length)), 'regle'),
+    lignePiste('séquence', ech(reference), 'reference')
+  ];
+  for (const i of cochees) {
+    const p = r.paires[i];
+    if (!p) continue;
+    const rang = i + 1;
+    const oligos: OligoPlace[] = [
+      {role: 'F', debut: p.avant.debut, fin: p.avant.fin, brin: '+', seq: p.avant.seq},
+      ...(p.sonde ? [{role: 'sonde' as const, debut: p.sonde.debut, fin: p.sonde.fin,
+                      brin: p.sonde.brin, seq: p.sonde.seq}] : []),
+      {role: 'R', debut: p.arriere.debut, fin: p.arriere.fin, brin: '−', seq: p.arriere.seq}
+    ];
+    const contenu = pisteAlignee(reference, oligos).map((seg) => {
+      if (!seg.role) return seg.texte;
+      const o = oligos.find((x) => x.role === seg.role);
+      const titre = o
+        ? `${nomOligo(rang, seg.role)} · ${nb(o.debut)}..${nb(o.fin)} · brin ${o.brin}` +
+          (o.brin === '−' ? ' — complément inverse affiché ; on commande ' + o.seq : '')
+        : '';
+      return `<span class="o-${seg.role}${seg.ecart ? ' ecart' : ''}" title="${ech(titre)}">` +
+             `${ech(seg.texte)}</span>`;
+    }).join('');
+    lignes.push(lignePiste(`paire${rang}`, contenu));
+  }
+
+  boite.innerHTML =
+    (modifiee
+      ? '<p class="alerte">La séquence a été modifiée depuis la recherche : l’alignement montre ' +
+        'celle qui a servi à la recherche. Relancez-la pour aligner sur la nouvelle.</p>'
+      : '') +
+    (cochees.length ? '' : '<p class="note">Cochez une ou plusieurs paires dans les résultats ' +
+      'pour les aligner ici.</p>') +
+    `<div class="alignement" id="alignement-defilement">${lignes.join('')}</div>`;
+
+  // Amener la vue sur la première paire cochée : sur une séquence de 1 500 nt,
+  // les oligos seraient sinon hors champ, loin à droite.
+  const premiere = cochees.length ? r.paires[cochees[0] as number] : undefined;
+  const defilement = $('#alignement-defilement');
+  const piste = defilement.querySelector<HTMLElement>('.reference .piste');
+  if (premiere && piste && reference.length) {
+    // L'étiquette de gauche reste collée au bord : décaler de k bases suffit
+    // pour que la base k apparaisse juste après elle. Douze bases de marge,
+    // pour voir ce qui précède l'amorce Forward.
+    const largeurBase = piste.scrollWidth / reference.length;
+    defilement.scrollLeft = Math.max(0, (premiere.avant.debut - 1 - 12) * largeurBase);
+  }
 }
 
 /** L'infobulle du score : au survol et au clavier, jamais à l'insu — elle
@@ -724,6 +807,18 @@ function phraseDuTerme(t: TermeScore): string {
   }
 }
 
+/** Les appariements de 4 nt ou plus entre les oligos d'une même paire, deux à
+ *  deux : F et R, puis chacun avec la sonde. Ce sont les oligos tels qu'on les
+ *  commande qui se rencontrent dans le tube — c'est donc eux qu'on confronte. */
+function appariementsDePaire(p: PaireAmorces): {quoi: string; court: string; a: AppariementCroise}[] {
+  const liste = [{quoi: 'F et R', court: 'F·R', a: appariementCroise(p.avant.seq, p.arriere.seq)}];
+  if (p.sonde) {
+    liste.push({quoi: 'F et sonde', court: 'F·S', a: appariementCroise(p.avant.seq, p.sonde.seq)});
+    liste.push({quoi: 'R et sonde', court: 'R·S', a: appariementCroise(p.arriere.seq, p.sonde.seq)});
+  }
+  return liste;
+}
+
 function detailDuScore(r: ResultatAmorces, index: number): string {
   const p = r.paires[index];
   if (!p) return '';
@@ -733,7 +828,14 @@ function detailDuScore(r: ResultatAmorces, index: number): string {
     <p class="note">Il ne mesure rien en soi : il classe ces ${nb(r.paires.length)} paires entre
       elles. Ce qui serait éliminatoire — structure interdite, manque de spécificité — a déjà
       écarté les autres.</p>
-    ${lignes ? `<ul>${lignes}</ul>` : '<p class="note">Aucun défaut mesurable : score nul.</p>'}`;
+    ${lignes ? `<ul>${lignes}</ul>` : '<p class="note">Aucun défaut mesurable : score nul.</p>'}
+    <p class="titre" style="margin-top:.8rem">Appariements entre oligos (4 nt ou plus)</p>
+    <ul>${appariementsDePaire(p).map(({quoi, a}) => `<li>${quoi} : ${a.nt
+      ? `${nb(a.nt)} nt s’apparient, soit ${nb(a.pourcent, 0)} % du plus court des deux` +
+        (a.plusLong !== a.nt ? ` (plus long segment : ${nb(a.plusLong)} nt)` : '')
+      : 'aucun segment de 4 nt ou plus'}</li>`).join('')}</ul>
+    <p class="note">Indiqué pour information : ces appariements ne s’ajoutent pas au score, où le
+      dimère F/R compte déjà par son ΔG.</p>`;
 }
 
 /** Cases à cocher, bilan, et export. Rebranché à chaque rendu : le tableau est
@@ -756,6 +858,7 @@ function brancherSelection(r: ResultatAmorces): void {
     const tout = $('#tout-cocher') as HTMLInputElement;
     tout.checked = n === cases().length && n > 0;
     tout.indeterminate = n > 0 && n < cases().length;
+    rendreAlignement();
   };
 
   $('#tout-cocher').addEventListener('change', (e) => {
@@ -864,6 +967,7 @@ export function rendre(): void {
   for (const id of ['#p-lecture', '#p-sequence', '#p-analyse', '#p-amorces', '#p-taches']) {
     $(id).hidden = !montrer;
   }
+  if (!montrer || !etat.amorces?.resultat) $('#p-alignement').hidden = true;
   if (!doc) return;
   rendreMeta(doc);
   rendreSequence(doc);
@@ -1397,6 +1501,7 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
     if (etat.amorces?.tache === oubli) {
       etat.amorces = undefined;
       $('#resultats').innerHTML = '';
+      $('#p-alignement').hidden = true;
     }
     if (etat.analyse?.tache === oubli) {
       etat.analyse = undefined;
@@ -1469,7 +1574,7 @@ export function demarrer(ex?: Executeur, isolation: 'native' | 'service-worker' 
       libelle: `Amorces — ${doc.nom} (${nb(seq.length)} nt)`,
       surFin: (t) => {
         if (t.resultat) {
-          etat.amorces = {tache: t.id, resultat: t.resultat};
+          etat.amorces = {tache: t.id, resultat: t.resultat, seq};
           rendreAmorces(t.resultat);
         } else {
           $('#resultats').innerHTML = `<p class="err">${ech(t.erreur ?? 'aucun résultat')}</p>`;

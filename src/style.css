@@ -232,3 +232,34 @@ legend .case{font:inherit;letter-spacing:inherit;text-transform:inherit;color:in
                   color:var(--warn);white-space:nowrap}
 td.score{cursor:help;text-decoration:underline dotted var(--text-dim);text-underline-offset:3px}
 td.score:hover,td.score:focus{color:#fff;outline:none;background:var(--accent-dim)}
+
+/* ── Alignement des amorces ────────────────────────────────────────────── */
+/* Une seule ligne par piste, jamais repliée : la séquence entière défile à
+   l'horizontale, et chaque colonne de caractères est une base. C'est pourquoi
+   tout est en chasse fixe, sans espacement entre lettres ni retour à la ligne. */
+.alignement{overflow:auto;max-height:24rem;margin-top:.6rem;border:1px solid var(--border);
+            border-radius:8px;background:var(--surface2);padding-block:.4rem;
+            font:.8rem/1.55 var(--mono)}
+.alignement .ligne{display:flex;white-space:pre;width:max-content}
+/* L'étiquette reste collée à gauche pendant le défilement, sur un fond opaque
+   pour que les bases passent dessous sans se mélanger au nom. */
+.alignement .etiquette{position:sticky;left:0;z-index:1;flex:none;width:6.5rem;
+                       padding-inline:.6rem;background:var(--surface2);
+                       color:var(--text-mid);border-right:1px solid var(--border)}
+.alignement .piste{padding-right:1rem;color:var(--text-dim)}
+.alignement .regle .piste{color:var(--text-dim)}
+/* Surtout pas de taille de police différente sur la règle : en chasse fixe,
+   une police plus petite fait dériver les numéros d'une base toutes les huit. */
+.alignement .reference .piste{color:var(--text)}
+.alignement .reference .etiquette{color:var(--text)}
+/* Une couleur par rôle — les mêmes que dans la légende au-dessus. */
+.o-F{color:var(--accent);font-weight:700}
+.o-R{color:var(--warn);font-weight:700}
+.o-sonde{color:var(--green);font-weight:700}
+.alignement .o-F,.alignement .o-R,.alignement .o-sonde{background:var(--surface3);border-radius:2px}
+/* Une lettre qui ne colle plus à la référence : la séquence a changé depuis
+   la recherche. Elle doit se voir de loin. */
+.alignement .ecart{background:var(--danger);color:#0b0b12}
+/* Les appariements de 4 nt ou plus, sous le score : discrets, mais en couleur
+   d'avertissement — c'est un point à regarder, pas une note. */
+td.score .appariement{color:var(--warn);white-space:nowrap}

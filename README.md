@@ -38,6 +38,8 @@ partout le même nom — `paire3_F`, `paire3_R`, `paire3_sonde`.
 | Calculer juste | Tm dans les conditions réelles de la réaction (K⁺, Mg²⁺, dNTP, amorce) et non à 50 mM de sodium ; épingles et dimères évalués en ΔG. |
 | Débusquer les hétérozygotes | Positions à deux pics que l'appel de bases a tranchées sans le dire, cherchées dans la zone exploitable, avec le code IUPAC proposé. |
 | Exporter | Rapport texte (cahier de manip, dépôt git) et rapport HTML autonome (envoi, impression), `.fas` corrigé. |
+| Aligner les amorces | Au-dessus de la recherche, la séquence sur une seule ligne avec une règle graduée, et sous elle une ligne par paire cochée : F, sonde et R posées à leur position, sur le brin + (la Reverse par son complément inverse, pour tomber lettre à lettre sous la séquence). |
+| Appariements entre oligos | Dans la bulle du score et sous sa valeur : les nucléotides qui s'apparient par segments de 4 nt ou plus entre F et R, F et la sonde, R et la sonde, et le pourcentage du plus court des deux. Indicatif : ils ne s'ajoutent pas au score. |
 | Exporter un design | Les paires retenues au format de la feuille « création nveau design » du laboratoire (`.xlsx`, colonnes et intitulés du template), en PDF imprimable, ou en `.fas` des oligonucléotides. Le nom d'amorce est le nom partagé (`paire1_F`…) ; ce que l'outil ne peut pas savoir — virus, gène, commentaire — reste vide plutôt que d'être deviné. |
 
 ## Démarrer

@@ -811,6 +811,92 @@ test('les réglages d’amorces sont rangés, la sonde s’éteint quand on ne l
   await expect(page.locator('#p-amorces')).not.toContainText('fluorophore');
 });
 
+test('les paires cochées s’alignent sur la séquence, une ligne par paire', async ({page}) => {
+  const seq = await page.evaluate(() => {
+    let x = 53;
+    let s = '';
+    for (let i = 0; i < 1500; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
+    void window.seqops!.accepter([new File([`>cible\n${s}\n`], 'cible.fas', {type: 'text/plain'})]);
+    return s;
+  });
+  // Pas d'encart tant qu'il n'y a rien à aligner.
+  await expect(page.locator('#p-alignement')).toBeHidden();
+  await page.fill('#amp-min', '150');
+  await page.fill('#amp-max', '400');
+  await page.click('#btn-amorces');
+  await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
+
+  // L'encart est AU-DESSUS de la recherche d'amorces.
+  await expect(page.locator('#p-alignement')).toBeVisible();
+  const ordre = await page.evaluate(() => {
+    const a = document.querySelector('#p-alignement')!;
+    const b = document.querySelector('#p-amorces')!;
+    return a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+  });
+  expect(ordre).toBeTruthy();
+
+  // Une seule paire cochée : la règle, la séquence, et une ligne.
+  await page.uncheck('#tout-cocher');
+  await expect(page.locator('#alignement')).toContainText('Cochez une ou plusieurs paires');
+  await page.locator('#resultats .choix').first().check();
+  await expect(page.locator('#alignement .ligne')).toHaveCount(3);
+  await expect(page.locator('#alignement .reference .piste')).toHaveText(seq);
+
+  // Chaque oligo tombe exactement sous sa portion de séquence : F tel quel, R par
+  // son complément inverse — c'est-à-dire, dans les deux cas, la référence.
+  const ligne = page.locator('#alignement .ligne').nth(2);
+  await expect(ligne.locator('.etiquette')).toHaveText('paire1');
+  const piste = (await ligne.locator('.piste').textContent()) ?? '';
+  expect(piste).toHaveLength(seq.length);
+  const f = (await ligne.locator('.o-F').textContent()) ?? '';
+  const debutF = piste.indexOf(f);
+  expect(f.length).toBeGreaterThan(15);
+  expect(seq.slice(debutF, debutF + f.length)).toBe(f);
+  const rTexte = (await ligne.locator('.o-R').textContent()) ?? '';
+  const debutR = piste.indexOf(rTexte);
+  expect(seq.slice(debutR, debutR + rTexte.length)).toBe(rTexte);
+  await expect(ligne.locator('.ecart')).toHaveCount(0);
+
+  // La règle tombe juste : le « 1 » de « 101 » est au pixel près au-dessus de
+  // la 101e base. Une police de taille différente ferait dériver les numéros.
+  const ecart = await page.evaluate(() => {
+    const x = (selecteur: string, index: number) => {
+      const noeud = document.querySelector(selecteur)!.firstChild!;
+      const plage = document.createRange();
+      plage.setStart(noeud, index);
+      plage.setEnd(noeud, index + 1);
+      return plage.getBoundingClientRect().left;
+    };
+    return Math.abs(x('#alignement .regle .piste', 100) - x('#alignement .reference .piste', 100));
+  });
+  expect(ecart).toBeLessThan(0.5);
+
+  // Deux paires cochées, deux lignes.
+  await page.locator('#resultats .choix').nth(1).check();
+  await expect(page.locator('#alignement .ligne')).toHaveCount(4);
+  await expect(page.locator('#alignement .ligne').nth(3).locator('.etiquette')).toHaveText('paire2');
+});
+
+test('la bulle du score donne les appariements de 4 nt ou plus entre oligos', async ({page}) => {
+  await page.evaluate(() => {
+    let x = 89;
+    let s = '';
+    for (let i = 0; i < 1200; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += 'ACGT'[(x >>> 16) & 3]; }
+    return window.seqops!.accepter([new File([`>cible\n${s}\n`], 'cible.fas', {type: 'text/plain'})]);
+  });
+  await page.fill('#amp-min', '150');
+  await page.fill('#amp-max', '400');
+  await page.click('#btn-amorces');
+  await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
+  await page.locator('#resultats td.score').first().hover();
+  const bulle = page.locator('#infobulle');
+  await expect(bulle).toBeVisible();
+  await expect(bulle).toContainText('Appariements entre oligos (4 nt ou plus)');
+  await expect(bulle).toContainText('F et R');
+  await expect(bulle).toContainText('F et sonde');
+  await expect(bulle).toContainText('R et sonde');
+});
+
 test('le pied de page affiche la version du paquet', async ({page}) => {
   const {version} = JSON.parse(readFileSync('package.json', 'utf-8')) as {version: string};
   await expect(page.locator('#version')).toHaveText(`seqops ${version}`);

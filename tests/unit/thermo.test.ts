@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {autoAppariement, CONDITIONS_PCR, dg37, dimere, epingle, equivalentSodium,
+import {appariementCroise, autoAppariement, CONDITIONS_PCR, dg37, dimere, epingle, equivalentSodium,
         plusLongAppariement, plusLongueEpingle, tm, tmAjusteAuSel, tmSelon}
   from '../../src/core/thermo.js';
 import {tmPlusProcheVoisin} from '../../src/core/sequence.js';
@@ -167,5 +167,44 @@ describe('structures comptées en paires de bases (règles OligoCalc)', () => {
   it('refuse les séquences ambiguës plutôt que d’inventer', () => {
     expect(autoAppariement('ACGTNACGT').bp).toBe(0);
     expect(plusLongueEpingle('ACGTNACGT').bp).toBe(0);
+  });
+});
+
+describe('appariement croisé entre deux oligos (4 nt ou plus)', () => {
+  it('compte un segment complémentaire franc et le rapporte au plus court', () => {
+    // GGATCC est son propre complément inverse : six bases s'apparient. Le
+    // remplissage n'est fait que de A, qui ne s'apparient pas entre eux.
+    const a = 'AAAAAAGGATCCAAAAAAAA';                 // 20 nt
+    const b = 'AAAAAGGATCCAAAAAAAAAAAAA';             // 24 nt
+    const r = appariementCroise(a, b);
+    expect(r.nt).toBe(6);
+    expect(r.plusLong).toBe(6);
+    expect(r.pourcent).toBeCloseTo(30, 6);             // 6 / 20
+  });
+
+  it('ignore ce qui fait moins de quatre bases', () => {
+    // Trois bases complémentaires (GAT / ATC) ne comptent pas.
+    const r = appariementCroise('CCCGATCCC'.replace(/C/g, 'A'), 'TTTATCTTT'.replace(/T/g, 'A'));
+    expect(r.nt).toBe(0);
+    expect(r.pourcent).toBe(0);
+  });
+
+  it('additionne plusieurs segments d’au moins quatre bases dans la même mise en regard', () => {
+    // b est le complément inverse exact de a, sauf une base au milieu :
+    // deux segments de 5 et 4 bases, séparés par un mésappariement.
+    const a = 'ACGTACCTAG';
+    const face = 'ACGTAGCTAG';                          // ce que b présente, lu 5'→3' face à a
+    const b = face.split('').reverse().map((x) => ({A: 'T', C: 'G', G: 'C', T: 'A'})[x]).join('');
+    const r = appariementCroise(a, b);
+    expect(r.nt).toBe(9);
+    expect(r.plusLong).toBe(5);
+    expect(r.pourcent).toBeCloseTo(90, 6);
+  });
+
+  it('est symétrique, et ne s’effondre pas sur une base ambiguë', () => {
+    const a = 'GACTGGATCCAGTCAA';
+    const b = 'TTGGATCCAATTGCA';
+    expect(appariementCroise(a, b).nt).toBe(appariementCroise(b, a).nt);
+    expect(appariementCroise('ACGNACGT', 'ACGT')).toEqual({nt: 0, plusLong: 0, pourcent: 0});
   });
 });
