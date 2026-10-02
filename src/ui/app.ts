@@ -29,7 +29,9 @@ import type {Executeur, Tache} from '../jobs/types.js';
 import {dessiner, placesBases} from './chromatogramme.js';
 import {$, ech, nb, nomSur, telecharger} from './dom.js';
 
-export const VERSION = '0.1.0';
+/** Lue dans package.json à la construction (voir vite.config.ts), et
+ *  incrémentée à chaque commit par le crochet .githooks/pre-commit. */
+export const VERSION: string = __VERSION_SEQOPS__;
 
 export interface DocumentSeq {
   readonly id: string;

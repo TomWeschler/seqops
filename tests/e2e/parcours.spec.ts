@@ -811,6 +811,11 @@ test('les réglages d’amorces sont rangés, la sonde s’éteint quand on ne l
   await expect(page.locator('#p-amorces')).not.toContainText('fluorophore');
 });
 
+test('le pied de page affiche la version du paquet', async ({page}) => {
+  const {version} = JSON.parse(readFileSync('package.json', 'utf-8')) as {version: string};
+  await expect(page.locator('#version')).toHaveText(`seqops ${version}`);
+});
+
 test('rien ne sort du poste', async ({page}) => {
   const sortants: string[] = [];
   page.on('request', (r) => {

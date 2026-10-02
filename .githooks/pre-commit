@@ -1,0 +1,11 @@
+#!/bin/sh
+# Chaque commit porte son propre numéro de version : on incrémente, puis on
+# ajoute les deux fichiers au commit en cours. Le pied de page de l'application
+# lit ce même numéro dans package.json (vite.config.ts) : ils ne peuvent pas
+# diverger.
+#
+# Installé par `npm install` / `npm ci` (script « prepare »). Pour s'en passer
+# exceptionnellement : git commit --no-verify.
+set -e
+node scripts/incrementer-version.mjs
+git add package.json package-lock.json
