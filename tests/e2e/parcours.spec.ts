@@ -826,14 +826,17 @@ test('les paires cochées s’alignent sur la séquence, une ligne par paire', a
   await page.click('#btn-amorces');
   await expect(page.locator('#resultats table')).toBeVisible({timeout: 60_000});
 
-  // L'encart est AU-DESSUS de la recherche d'amorces.
+  // L'encart est juste sous le bouton « Chercher des amorces », et avant la
+  // ligne des boutons d'export.
   await expect(page.locator('#p-alignement')).toBeVisible();
   const ordre = await page.evaluate(() => {
-    const a = document.querySelector('#p-alignement')!;
-    const b = document.querySelector('#p-amorces')!;
-    return a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+    const suit = (a: string, b: string) => Boolean(
+      document.querySelector(a)!.compareDocumentPosition(document.querySelector(b)!) &
+      Node.DOCUMENT_POSITION_FOLLOWING);
+    return {apresBouton: suit('#btn-amorces', '#p-alignement'),
+            avantExport: suit('#p-alignement', '#btn-xlsx')};
   });
-  expect(ordre).toBeTruthy();
+  expect(ordre).toEqual({apresBouton: true, avantExport: true});
 
   // Une seule paire cochée : la règle, la séquence, et une ligne.
   await page.uncheck('#tout-cocher');
@@ -892,8 +895,11 @@ test('la bulle du score donne les appariements de 4 nt consécutifs ou plus entr
   const bulle = page.locator('#infobulle');
   await expect(bulle).toBeVisible();
   await expect(bulle).toContainText('Appariements entre oligos (4 nt consécutifs ou plus)');
-  // Pas de pourcentage : seul le nombre de nucléotides consécutifs est demandé.
-  await expect(bulle).not.toContainText('du plus court');
+  // Le pourcentage accompagne le nombre de nucléotides consécutifs, quand il y en a.
+  const texteBulle = (await bulle.textContent()) ?? '';
+  if (texteBulle.includes('nt consécutifs s’apparient')) {
+    expect(texteBulle).toContain('% du plus court des deux');
+  }
   await expect(bulle).toContainText('F et R');
   await expect(bulle).toContainText('F et sonde');
   await expect(bulle).toContainText('R et sonde');

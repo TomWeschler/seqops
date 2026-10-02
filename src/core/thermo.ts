@@ -296,11 +296,16 @@ export function plusLongAppariement(a: string, b: string, fenetre3 = 5): Apparie
 export interface AppariementCroise {
   /** Nucléotides consécutifs appariés — 0 s'il n'y en a pas `minimum` d'affilée. */
   readonly nt: number;
+  /** Ce que ces nucléotides représentent du plus court des deux oligos, en % :
+   *  cinq bases d'affilée pèsent davantage sur une amorce de 18 nt que sur une
+   *  sonde de 30. */
+  readonly pourcent: number;
 }
 
 export function appariementCroise(a: string, b: string, minimum = 4): AppariementCroise {
   const plusLong = plusLongAppariement(a, b).bp;
-  return {nt: plusLong >= minimum ? plusLong : 0};
+  if (plusLong < minimum) return {nt: 0, pourcent: 0};
+  return {nt: plusLong, pourcent: (plusLong / Math.min(a.length, b.length)) * 100};
 }
 
 /** Auto-appariement : l'oligonucléotide contre lui-même. C'est le

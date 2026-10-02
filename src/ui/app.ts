@@ -653,7 +653,7 @@ function rendreAmorces(r: ResultatAmorces): void {
         // Sous le score, seulement ce qui s'apparie : une case pleine de zéros
         // noierait les rares paires où il y a quelque chose à voir.
         appariementsDePaire(p).filter(({a}) => a.nt > 0)
-          .map(({court, a}) => `<br><span class="note appariement" title="${nb(a.nt)} nt consécutifs s’apparient">${court} ${nb(a.nt)} nt</span>`)
+          .map(({court, a}) => `<br><span class="note appariement" title="${nb(a.nt)} nt consécutifs s’apparient, soit ${nb(a.pourcent, 0)} % du plus court des deux">${court} ${nb(a.nt)} nt · ${nb(a.pourcent, 0)} %</span>`)
           .join('')}</td></tr>`).join('') +
     '</tbody></table></div>';
 
@@ -831,7 +831,7 @@ function detailDuScore(r: ResultatAmorces, index: number): string {
     ${lignes ? `<ul>${lignes}</ul>` : '<p class="note">Aucun défaut mesurable : score nul.</p>'}
     <p class="titre" style="margin-top:.8rem">Appariements entre oligos (4 nt consécutifs ou plus)</p>
     <ul>${appariementsDePaire(p).map(({quoi, a}) => `<li>${quoi} : ${a.nt
-      ? `${nb(a.nt)} nt consécutifs s’apparient`
+      ? `${nb(a.nt)} nt consécutifs s’apparient, soit ${nb(a.pourcent, 0)} % du plus court des deux`
       : 'aucun appariement de 4 nt consécutifs ou plus'}</li>`).join('')}</ul>
     <p class="note">Le plus long segment de bases complémentaires d’un seul tenant, quelle que
       soit la façon dont les deux oligos se font face. Indiqué pour information : il ne s’ajoute

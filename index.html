@@ -112,17 +112,6 @@
       le GC glissant et les cadres ouverts.</p></div>
   </section>
 
-  <section id="p-alignement" hidden>
-    <h2>Alignement des amorces</h2>
-    <p class="note" id="alignement-legende">
-      La séquence sur une ligne, et sous elle une ligne par paire cochée dans les résultats :
-      <span class="o-F">amorce Forward</span>, <span class="o-sonde">sonde</span>,
-      <span class="o-R">amorce Reverse</span>. Tout est écrit sur le brin + : la Reverse — et une
-      sonde lue sur le brin − — apparaissent par leur complément inverse, pour tomber lettre à
-      lettre sous la séquence. Ce qu'on commande reste ce qu'affiche le tableau.</p>
-    <div id="alignement"></div>
-  </section>
-
   <section id="p-amorces" hidden>
     <h2>Recherche d’amorces</h2>
     <div class="reglages">
@@ -282,6 +271,16 @@
     </div>
     <div class="barre">
       <button id="btn-amorces" class="primary">Chercher des amorces</button>
+    </div>
+    <div id="p-alignement" class="bloc-alignement" hidden>
+      <h3>Alignement des amorces</h3>
+      <p class="note" id="alignement-legende">
+      La séquence sur une ligne, et sous elle une ligne par paire cochée dans les résultats :
+      <span class="o-F">amorce Forward</span>, <span class="o-sonde">sonde</span>,
+      <span class="o-R">amorce Reverse</span>. Tout est écrit sur le brin + : la Reverse — et une
+      sonde lue sur le brin − — apparaissent par leur complément inverse, pour tomber lettre à
+      lettre sous la séquence. Ce qu'on commande reste ce qu'affiche le tableau.</p>
+      <div id="alignement"></div>
     </div>
     <div id="resultats"></div>
   </section>

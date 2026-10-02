@@ -174,7 +174,10 @@ describe('appariement croisé entre deux oligos (4 nt consécutifs ou plus)', ()
   it('compte un segment complémentaire d’un seul tenant', () => {
     // GGATCC est son propre complément inverse : six bases consécutives. Le
     // remplissage n'est fait que de A, qui ne s'apparient pas entre eux.
-    expect(appariementCroise('AAAAAAGGATCCAAAAAAAA', 'AAAAAGGATCCAAAAAAAAAAAAA').nt).toBe(6);
+    const r = appariementCroise('AAAAAAGGATCCAAAAAAAA', 'AAAAAGGATCCAAAAAAAAAAAAA');
+    expect(r.nt).toBe(6);
+    // Rapporté au plus court des deux : 6 sur 20 nt.
+    expect(r.pourcent).toBeCloseTo(30, 6);
   });
 
   it('ne compte que le plus long segment consécutif, sans additionner les autres', () => {
@@ -185,11 +188,12 @@ describe('appariement croisé entre deux oligos (4 nt consécutifs ou plus)', ()
     const face = 'ACGTAGCTAG';
     const b = face.split('').reverse().map((x) => ({A: 'T', C: 'G', G: 'C', T: 'A'})[x]).join('');
     expect(appariementCroise(a, b).nt).toBe(5);
+    expect(appariementCroise(a, b).pourcent).toBeCloseTo(50, 6);   // 5 sur 10 nt
   });
 
   it('rend 0 sous quatre bases consécutives', () => {
     // GATC est complémentaire de lui-même, mais coupé : GAT seulement d'affilée.
-    expect(appariementCroise('AAAGATAAA', 'AAAATCAAA').nt).toBe(0);
+    expect(appariementCroise('AAAGATAAA', 'AAAATCAAA')).toEqual({nt: 0, pourcent: 0});
     // Exactement quatre : compté.
     expect(appariementCroise('AAAGATCAAA', 'AAAGATCAAA').nt).toBe(4);
   });
@@ -198,6 +202,6 @@ describe('appariement croisé entre deux oligos (4 nt consécutifs ou plus)', ()
     const a = 'GACTGGATCCAGTCAA';
     const b = 'TTGGATCCAATTGCA';
     expect(appariementCroise(a, b).nt).toBe(appariementCroise(b, a).nt);
-    expect(appariementCroise('ACGNACGT', 'ACGT')).toEqual({nt: 0});
+    expect(appariementCroise('ACGNACGT', 'ACGT')).toEqual({nt: 0, pourcent: 0});
   });
 });

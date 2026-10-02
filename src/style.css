@@ -263,3 +263,7 @@ td.score:hover,td.score:focus{color:#fff;outline:none;background:var(--accent-di
 /* Les appariements de 4 nt ou plus, sous le score : discrets, mais en couleur
    d'avertissement — c'est un point à regarder, pas une note. */
 td.score .appariement{color:var(--warn);white-space:nowrap}
+/* L'alignement vit dans la recherche d'amorces, entre le bouton et les
+   résultats : un bloc séparé d'un filet, pas une section de plus. */
+.bloc-alignement{margin-top:1rem;padding-top:.9rem;border-top:1px solid var(--border)}
+.bloc-alignement h3{margin-bottom:.3rem}
