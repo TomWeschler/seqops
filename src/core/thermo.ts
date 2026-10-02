@@ -285,45 +285,22 @@ export function plusLongAppariement(a: string, b: string, fenetre3 = 5): Apparie
   return meilleur;
 }
 
-/** Ce que deux oligonucléotides ont de complémentaire, compté en nucléotides.
+/** Le plus long appariement CONSÉCUTIF entre deux oligonucléotides, compté
+ *  en nucléotides, à partir de `minimum` bases d'affilée.
  *
- *  Pour chaque façon de les mettre face à face (antiparallèles, comme ils
- *  s'hybrideraient dans le tube), on additionne les segments appariés d'au
- *  moins `minimum` bases — en dessous, deux ou trois bases complémentaires se
- *  trouvent entre n'importe quels oligos et ne tiennent pas à 60 °C. On garde
- *  la mise en regard qui en apparie le plus.
- *
- *  Le pourcentage se rapporte au plus court des deux : cinq bases appariées
- *  pèsent davantage sur une amorce de 18 nt que sur une sonde de 30. */
+ *  On les met face à face de toutes les façons possibles (antiparallèles,
+ *  comme ils s'hybrideraient dans le tube) et on retient le plus long segment
+ *  de bases complémentaires qui se suivent sans interruption. Des bases
+ *  appariées isolément, ou par deux ou trois, se trouvent entre n'importe quels
+ *  oligos et ne tiennent pas à 60 °C : en dessous de `minimum`, on rend 0. */
 export interface AppariementCroise {
-  /** Nucléotides appariés, dans des segments d'au moins `minimum` bases. */
+  /** Nucléotides consécutifs appariés — 0 s'il n'y en a pas `minimum` d'affilée. */
   readonly nt: number;
-  /** Le plus long de ces segments. */
-  readonly plusLong: number;
-  /** nt rapporté à la longueur du plus court des deux, en %. */
-  readonly pourcent: number;
 }
 
 export function appariementCroise(a: string, b: string, minimum = 4): AppariementCroise {
-  const rien: AppariementCroise = {nt: 0, plusLong: 0, pourcent: 0};
-  if (!/^[ACGT]+$/.test(a) || !/^[ACGT]+$/.test(b)) return rien;
-  const face = complementInverse(b);
-  let meilleur = rien;
-  for (let decalage = -(face.length - 1); decalage < a.length; decalage++) {
-    let total = 0;
-    let plusLong = 0;
-    let courant = 0;
-    for (let i = 0; i <= a.length; i++) {
-      const j = i - decalage;
-      if (i < a.length && j >= 0 && j < face.length && a[i] === face[j]) { courant++; continue; }
-      if (courant >= minimum) { total += courant; plusLong = Math.max(plusLong, courant); }
-      courant = 0;
-    }
-    if (total > meilleur.nt || (total === meilleur.nt && plusLong > meilleur.plusLong)) {
-      meilleur = {nt: total, plusLong, pourcent: (total / Math.min(a.length, b.length)) * 100};
-    }
-  }
-  return meilleur;
+  const plusLong = plusLongAppariement(a, b).bp;
+  return {nt: plusLong >= minimum ? plusLong : 0};
 }
 
 /** Auto-appariement : l'oligonucléotide contre lui-même. C'est le

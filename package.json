@@ -1,6 +1,6 @@
 {
   "name": "seqops",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Correction, analyse et design d'amorces sur séquences Sanger — tout dans le navigateur.",
   "license": "MIT",

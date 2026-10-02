@@ -877,7 +877,7 @@ test('les paires cochées s’alignent sur la séquence, une ligne par paire', a
   await expect(page.locator('#alignement .ligne').nth(3).locator('.etiquette')).toHaveText('paire2');
 });
 
-test('la bulle du score donne les appariements de 4 nt ou plus entre oligos', async ({page}) => {
+test('la bulle du score donne les appariements de 4 nt consécutifs ou plus entre oligos', async ({page}) => {
   await page.evaluate(() => {
     let x = 89;
     let s = '';
@@ -891,7 +891,9 @@ test('la bulle du score donne les appariements de 4 nt ou plus entre oligos', as
   await page.locator('#resultats td.score').first().hover();
   const bulle = page.locator('#infobulle');
   await expect(bulle).toBeVisible();
-  await expect(bulle).toContainText('Appariements entre oligos (4 nt ou plus)');
+  await expect(bulle).toContainText('Appariements entre oligos (4 nt consécutifs ou plus)');
+  // Pas de pourcentage : seul le nombre de nucléotides consécutifs est demandé.
+  await expect(bulle).not.toContainText('du plus court');
   await expect(bulle).toContainText('F et R');
   await expect(bulle).toContainText('F et sonde');
   await expect(bulle).toContainText('R et sonde');

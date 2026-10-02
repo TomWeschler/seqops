@@ -653,7 +653,7 @@ function rendreAmorces(r: ResultatAmorces): void {
         // Sous le score, seulement ce qui s'apparie : une case pleine de zéros
         // noierait les rares paires où il y a quelque chose à voir.
         appariementsDePaire(p).filter(({a}) => a.nt > 0)
-          .map(({court, a}) => `<br><span class="note appariement">${court} ${nb(a.nt)} nt · ${nb(a.pourcent, 0)} %</span>`)
+          .map(({court, a}) => `<br><span class="note appariement" title="${nb(a.nt)} nt consécutifs s’apparient">${court} ${nb(a.nt)} nt</span>`)
           .join('')}</td></tr>`).join('') +
     '</tbody></table></div>';
 
@@ -807,7 +807,7 @@ function phraseDuTerme(t: TermeScore): string {
   }
 }
 
-/** Les appariements de 4 nt ou plus entre les oligos d'une même paire, deux à
+/** Les appariements de 4 nt consécutifs ou plus entre les oligos d'une même paire, deux à
  *  deux : F et R, puis chacun avec la sonde. Ce sont les oligos tels qu'on les
  *  commande qui se rencontrent dans le tube — c'est donc eux qu'on confronte. */
 function appariementsDePaire(p: PaireAmorces): {quoi: string; court: string; a: AppariementCroise}[] {
@@ -829,13 +829,13 @@ function detailDuScore(r: ResultatAmorces, index: number): string {
       elles. Ce qui serait éliminatoire — structure interdite, manque de spécificité — a déjà
       écarté les autres.</p>
     ${lignes ? `<ul>${lignes}</ul>` : '<p class="note">Aucun défaut mesurable : score nul.</p>'}
-    <p class="titre" style="margin-top:.8rem">Appariements entre oligos (4 nt ou plus)</p>
+    <p class="titre" style="margin-top:.8rem">Appariements entre oligos (4 nt consécutifs ou plus)</p>
     <ul>${appariementsDePaire(p).map(({quoi, a}) => `<li>${quoi} : ${a.nt
-      ? `${nb(a.nt)} nt s’apparient, soit ${nb(a.pourcent, 0)} % du plus court des deux` +
-        (a.plusLong !== a.nt ? ` (plus long segment : ${nb(a.plusLong)} nt)` : '')
-      : 'aucun segment de 4 nt ou plus'}</li>`).join('')}</ul>
-    <p class="note">Indiqué pour information : ces appariements ne s’ajoutent pas au score, où le
-      dimère F/R compte déjà par son ΔG.</p>`;
+      ? `${nb(a.nt)} nt consécutifs s’apparient`
+      : 'aucun appariement de 4 nt consécutifs ou plus'}</li>`).join('')}</ul>
+    <p class="note">Le plus long segment de bases complémentaires d’un seul tenant, quelle que
+      soit la façon dont les deux oligos se font face. Indiqué pour information : il ne s’ajoute
+      pas au score, où le dimère F/R compte déjà par son ΔG.</p>`;
 }
 
 /** Cases à cocher, bilan, et export. Rebranché à chaque rendu : le tableau est

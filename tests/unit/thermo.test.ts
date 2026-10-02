@@ -170,41 +170,34 @@ describe('structures comptées en paires de bases (règles OligoCalc)', () => {
   });
 });
 
-describe('appariement croisé entre deux oligos (4 nt ou plus)', () => {
-  it('compte un segment complémentaire franc et le rapporte au plus court', () => {
-    // GGATCC est son propre complément inverse : six bases s'apparient. Le
+describe('appariement croisé entre deux oligos (4 nt consécutifs ou plus)', () => {
+  it('compte un segment complémentaire d’un seul tenant', () => {
+    // GGATCC est son propre complément inverse : six bases consécutives. Le
     // remplissage n'est fait que de A, qui ne s'apparient pas entre eux.
-    const a = 'AAAAAAGGATCCAAAAAAAA';                 // 20 nt
-    const b = 'AAAAAGGATCCAAAAAAAAAAAAA';             // 24 nt
-    const r = appariementCroise(a, b);
-    expect(r.nt).toBe(6);
-    expect(r.plusLong).toBe(6);
-    expect(r.pourcent).toBeCloseTo(30, 6);             // 6 / 20
+    expect(appariementCroise('AAAAAAGGATCCAAAAAAAA', 'AAAAAGGATCCAAAAAAAAAAAAA').nt).toBe(6);
   });
 
-  it('ignore ce qui fait moins de quatre bases', () => {
-    // Trois bases complémentaires (GAT / ATC) ne comptent pas.
-    const r = appariementCroise('CCCGATCCC'.replace(/C/g, 'A'), 'TTTATCTTT'.replace(/T/g, 'A'));
-    expect(r.nt).toBe(0);
-    expect(r.pourcent).toBe(0);
-  });
-
-  it('additionne plusieurs segments d’au moins quatre bases dans la même mise en regard', () => {
-    // b est le complément inverse exact de a, sauf une base au milieu :
-    // deux segments de 5 et 4 bases, séparés par un mésappariement.
+  it('ne compte que le plus long segment consécutif, sans additionner les autres', () => {
+    // b est le complément inverse exact de a, sauf une base au milieu : deux
+    // segments de 5 et 4 bases séparés par un mésappariement. Ce ne sont pas
+    // 9 nt consécutifs : on en compte 5.
     const a = 'ACGTACCTAG';
-    const face = 'ACGTAGCTAG';                          // ce que b présente, lu 5'→3' face à a
+    const face = 'ACGTAGCTAG';
     const b = face.split('').reverse().map((x) => ({A: 'T', C: 'G', G: 'C', T: 'A'})[x]).join('');
-    const r = appariementCroise(a, b);
-    expect(r.nt).toBe(9);
-    expect(r.plusLong).toBe(5);
-    expect(r.pourcent).toBeCloseTo(90, 6);
+    expect(appariementCroise(a, b).nt).toBe(5);
+  });
+
+  it('rend 0 sous quatre bases consécutives', () => {
+    // GATC est complémentaire de lui-même, mais coupé : GAT seulement d'affilée.
+    expect(appariementCroise('AAAGATAAA', 'AAAATCAAA').nt).toBe(0);
+    // Exactement quatre : compté.
+    expect(appariementCroise('AAAGATCAAA', 'AAAGATCAAA').nt).toBe(4);
   });
 
   it('est symétrique, et ne s’effondre pas sur une base ambiguë', () => {
     const a = 'GACTGGATCCAGTCAA';
     const b = 'TTGGATCCAATTGCA';
     expect(appariementCroise(a, b).nt).toBe(appariementCroise(b, a).nt);
-    expect(appariementCroise('ACGNACGT', 'ACGT')).toEqual({nt: 0, plusLong: 0, pourcent: 0});
+    expect(appariementCroise('ACGNACGT', 'ACGT')).toEqual({nt: 0});
   });
 });
